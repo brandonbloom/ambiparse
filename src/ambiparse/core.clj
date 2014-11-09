@@ -40,11 +40,12 @@
         null (atom nil)]
     (reify Parser
       (nullable? [_]
-        (or @null
-            (let [step #(reset! null (or (nullable? left) (nullable? right)))]
-              (reset! null false)
-              (reduce (fn [prev cur] (if (= prev cur) (reduced cur) cur))
-                      (repeatedly step)))))
+        (if-some [x @null]
+          x
+          (let [step #(reset! null (or (nullable? left) (nullable? right)))]
+            (reset! null false)
+            (reduce (fn [prev cur] (if (= prev cur) (reduced cur) cur))
+                    (repeatedly step)))))
       (derive [_ c]
         (or (@memo c)
             (let [l (direct left), r (direct right)
