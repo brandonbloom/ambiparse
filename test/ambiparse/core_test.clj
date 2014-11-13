@@ -112,20 +112,19 @@
     "a"       "b"        #{}
     "a"       "aXc"      #{}
 
-    "a"       "a"        #{[\a]}
+    "a"       "a"        #{\a}
     "abc"     "abc"      #{[\a \b \c]}
-    #{\a \b}  "a"        #{[\a]}
+    #{\a \b}  "a"        #{\a}
 
-    ;;TODO test with application of reduction rules
-    xy-list   "xyxy"     #{[[::xy-list \x
-                             [::yx-list \y
-                              [::xy-list \x
-                               [::yx-list \y]]]]]
-                           [[::xy-list \x
-                             [::yx-list \y
-                              [::xy-list \x
-                               [::yx-list \y
-                                [::xy-list]]]]]]}
+    xy-list   "xyxy"     #{[::xy-list
+                            [\x [::yx-list
+                                 [\y [::xy-list
+                                      [\x [::yx-list \y]]]]]]]
+                           [::xy-list
+                            [\x [::yx-list
+                                 [\y [::xy-list
+                                      [\x [::yx-list
+                                           [\y [::xy-list []]]]]]]]]]}
 
     ))
 

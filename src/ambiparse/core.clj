@@ -27,7 +27,7 @@
 (defmacro defprod
   ([name node]
    (let [tag (keyword (str *ns*) (str name))]
-     (list `defprod name node `(fn [x#] (into [~tag] x#)))))
+     (list `defprod name node `(fn [x#] [~tag x#]))))
   ([name node f]
    `(do
       (def ~name (prod (var ~name)))
@@ -190,15 +190,9 @@
 
 (defmethod parses :lit [_] #{})
 
-(->> '(#{[\a]} #{[\x] [\y]})
-     (apply cartesian-product)
-     (map #(apply concat %))
-     )
-
 (defmethod parses :cat [{:keys [elements]}]
   (->> (map parses elements)
        (apply cartesian-product)
-       (map #(apply concat %))
        set))
 
 (defmethod parses :alt [{:keys [alternatives]}]
@@ -206,7 +200,7 @@
 
 (defmethod parses :red [{:keys [lang f]}]
   (set (for [p (parses lang)]
-         [(f p)])))
+         (f p))))
 
 (defmethod parses :prod [x]
   (fix [:parses x]
@@ -266,7 +260,7 @@
 (defmethod derive :lit
   [{:keys [value]} x]
   (if (= value x)
-    (parsed #{[x]})
+    (parsed #{x})
     none))
 
 (defmethod derive :cat
