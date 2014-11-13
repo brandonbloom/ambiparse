@@ -17,25 +17,27 @@
   (assert (var? x))
   {:head :prod :var x})
 
-(defn red [tag lang]
-  {:head :red :tag tag :lang lang})
+(defn red [lang f]
+  {:head :red :lang lang :f f})
 
 (def null (cat))
 (def none (alt))
 
 
-(defmacro defprod [name node]
-  `(do
-     (def ~name (prod (var ~name)))
-     (alter-meta! (var ~name) assoc ::lang (expand ~node))
-     (var ~name)))
+(defmacro defprod
+  ([name node]
+   (let [tag (keyword (str *ns*) (str name))]
+     (list `defprod name node `(fn [x#] (into [~tag] x#)))))
+  ([name node f]
+   `(do
+      (def ~name (prod (var ~name)))
+      (alter-meta! (var ~name) assoc ::lang (expand ~node) ::f ~f)
+      (var ~name))))
 
 (defn prod->red [prod]
   (assert (= (:head prod) :prod))
-  (let [tag (let [m (-> prod :var meta)]
-              (keyword (-> m :ns str) (-> m :name str)))
-        lang (-> prod :var meta ::lang)]
-    (red tag lang)))
+  (let [m (-> prod :var meta)]
+    (red (::lang m) (::f m))))
 
 
 (defn parsed [trees]
@@ -202,9 +204,9 @@
 (defmethod parses :alt [{:keys [alternatives]}]
   (apply set/union (map parses alternatives)))
 
-(defmethod parses :red [{:keys [tag lang]}]
+(defmethod parses :red [{:keys [lang f]}]
   (set (for [p (parses lang)]
-         [(into [tag] p)])))
+         [(f p)])))
 
 (defmethod parses :prod [x]
   (fix [:parses x]
@@ -242,8 +244,8 @@
       (apply alt alts))))
 
 (defmethod simplify :red
-  [{:keys [tag lang]}]
-  (red tag (simplify lang)))
+  [{:keys [lang f]}]
+  (red (simplify lang) f))
 
 (defmethod simplify :prod
   [prod]
@@ -283,8 +285,8 @@
   (apply alt (map #(derive % x) alternatives)))
 
 (defmethod derive :red
-  [{:keys [tag lang]} x]
-  (red tag (derive lang x)))
+  [{:keys [lang f]} x]
+  (red (derive lang x) f))
 
 (defmethod derive :prod
   [prod x]
