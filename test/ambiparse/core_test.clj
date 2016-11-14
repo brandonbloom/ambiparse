@@ -1,6 +1,6 @@
 (ns ambiparse.core-test
   (:require [clojure.test :refer [deftest testing is are]]
-            [ambiparse.core :as lang :refer [cat alt lit prod defprod]]))
+            [ambiparse.core :as a :refer [defprod]]))
 
 
 (declare yx-list)
@@ -18,31 +18,32 @@
 
 
 (deftest expand-test
-  (are [x y] (= (lang/expand x) y)
+  (are [x y] (= (a/expand x) y)
 
-    []          (cat)
-    #{}         (alt)
-    \x          (lit \x)
-    "abc"       (cat (lit \a) (lit \b) (lit \c))
-    #{\a "xy"}  (alt (lit \a) (cat (lit \x) (lit \y)))
-    [(lit \x)]  (cat (lit \x))
+    []            (a/cat)
+    #{}           (a/alt)
+    \x            (a/lit \x)
+    "abc"         (a/cat (a/lit \a) (a/lit \b) (a/lit \c))
+    #{\a "xy"}    (a/alt (a/lit \a)
+                         (a/cat (a/lit \x) (a/lit \y)))
+    [(a/lit \x)]  (a/cat (a/lit \x))
 
-    #'yx-list   (prod #'yx-list)
-    yx-list     (prod #'yx-list)
+    #'yx-list     (a/prod #'yx-list)
+    yx-list       (a/prod #'yx-list)
 
     ))
 
 (defn nullable? [lang]
-  (lang/with-cache
-    (-> lang lang/expand lang/nullable?)))
+  (a/with-cache
+    (-> lang a/expand a/nullable?)))
 
 (defn null? [lang]
-  (lang/with-cache
-    (-> lang lang/expand lang/null?)))
+  (a/with-cache
+    (-> lang a/expand a/null?)))
 
 (defn none? [lang]
-  (lang/with-cache
-    (-> lang lang/expand lang/none?)))
+  (a/with-cache
+    (-> lang a/expand a/none?)))
 
 (deftest nullable?-test
   (are [lang bool] (= (nullable? lang) bool)
@@ -85,7 +86,7 @@
     ))
 
 (deftest simplify-test
-  (are [x y] (= (-> x lang/expand lang/simplify) (lang/expand y))
+  (are [x y] (= (-> x a/expand a/simplify) (a/expand y))
 
     \x                     \x
     []                     []
@@ -107,7 +108,7 @@
     ))
 
 (deftest parse-test
-  (are [lang in out] (= (lang/parse lang in) out)
+  (are [lang in out] (= (a/parse lang in) out)
 
     "a"       "b"        #{}
     "a"       "aXc"      #{}
@@ -130,19 +131,20 @@
 
 (comment
 
-  (lang/parse "abc" "abc")
+  (a/parse "abc" "abc")
 
-  (lang/with-cache
+  (require 'fipp.edn)
+  (a/with-cache
     (-> xy-list
-        (lang/parse "xyxy")
-        ;lang/expand
-        ;(lang/derive \x)
-        ;lang/simplify
-        ;lang/parses
+        (a/parse "xyxy")
+        ;a/expand
+        ;(a/derive \x)
+        ;a/simplify
+        ;a/parses
         fipp.edn/pprint
         ))
 
-  (lang/parses (lang/alt (lang/lit \x)))
+  (a/parses (a/alt (a/lit \x)))
 
 )
 
