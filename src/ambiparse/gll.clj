@@ -18,6 +18,8 @@
 ;;;   dst = destination key of edge
 ;;;   d = decorator attached to edges
 
+;;TODO: Combine in to single state record.
+
 ;;; Essential state.
 (def ^:dynamic input)
 (def ^:dynamic graph)
@@ -62,8 +64,12 @@
   (fn [t by] (classify by)))
 
 (defmulti passed
-  "A parse node that k depends successfully added a new parse."
+  "Tells k about a successful sub-parse."
   (fn [k t] (dispatch k)))
+
+(defmulti failure
+  "Asks k for a failure."
+  (fn [k err] (dispatch k)))
 
 (def conjs (fnil conj #{}))
 
@@ -88,6 +94,7 @@
 (defmethod decorate :identity [t _]
   t)
 
+;;TODO: Is this the only decorator needed?
 (defmethod decorate :prefix [x [_ xs]]
   (merge xs x {::a/begin (::a/begin xs)
                ::a/end (::a/end x)
@@ -99,9 +106,6 @@
     (doseq [[dst ds] (get-in graph (conj k :edges))
             d ds]
       (send [:pass dst (decorate t d)]))))
-
-(defn fail [k t]
-  (log 'fail k t))
 
 ;;XXX use me, add line/col wherever begin/env/idx occur.
 (defn advance [pos c]
@@ -115,9 +119,9 @@
             (nth input i))
         t {::a/begin {:idx i}
            ::a/end {:idx (inc i)}
-           ::a/value x}
-        f (if (= x c) pass fail)]
-    (f k t)))
+           ::a/value x}]
+    (when (= x c)
+      (pass k t))))
 
 (defn empty-at [i]
   {::a/begin {:idx i}
@@ -135,6 +139,9 @@
 
 (defmethod passed :root [k t]
   (log 'parsed! t)
+  ;;TODO: Move this filter to the sender to minimize message traffic.
+  ;; Can be done recursively, so any node that is in some sort of
+  ;; "tail position" can drop interior parse messages. h/t Mark Engelberg.
   (when (= (-> t ::a/end :idx) (count input))
     (pass k t)))
 
@@ -223,23 +230,34 @@
 
 (def root [0 :root])
 
-(defn parses [pat s]
+(defn run [pat]
+  (add-edge 0 pat root :identity)
+  (while (seq queue)
+    (when (zero? (update! fuel dec))
+      (throw (Exception. "out of fuel!")))
+    (pump))
+  (log 'final-state= (state)))
+
+(defn with-run-fn [pat s f]
   (binding [input s
             graph []
             queue []
             fuel fuel]
-    (add-edge 0 pat root :identity)
-    (while (seq queue)
-      (when (zero? (update! fuel dec))
-        (throw (Exception. "out of fuel!")))
-      (pump))
-    (log 'final-state= (state))
-    (->> (get-in graph [0 :root :parses])
-         (map ::a/value))))
+    (run pat)
+    (f)))
 
-(defn parse [pat s]
-  (let [ps (distinct (parses pat s))]
+(defmacro with-run [pat s & body]
+  `(with-run-fn ~pat ~s (fn [] ~@body)))
+
+(defn successes [k]
+  (get-in graph (conj k :parses)))
+
+(defn parses []
+  (->> root successes (map ::a/value)))
+
+(defn parse []
+  (let [ps (distinct (parses))]
     (cond
-      (next ps) (throw (ex-info "Ambiguous parse:" {:parses (take 2 ps)}))
+      (next ps) (throw (ex-info "Ambiguous parse:" {::a/parses (take 2 ps)}))
       (seq ps) (first ps)
-      :else (throw (ex-info "Parse failed" {:error "TODO"}))))) ;XXX
+      :else (throw (ex-info "Parse failed" (failure root))))))

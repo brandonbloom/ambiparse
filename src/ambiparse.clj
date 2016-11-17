@@ -26,16 +26,18 @@
   (list `label name pat))
 
 (defn parses [pat s]
-  (gll/parses pat s))
+  (gll/with-run pat s
+    (gll/parses)))
 
 (defn parse [pat s]
-  (gll/parse pat s))
+  (gll/with-run pat s
+    (gll/parse)))
 
 (comment
 
   (require 'fipp.edn)
   (fipp.edn/pprint
-    (parses \x "x")
+    ;(parses \x "x")
     ;(parses (cat) "")
     ;(parses (cat) "x")
     ;(parses (cat \x) "x")
@@ -52,6 +54,9 @@
     ;(parses (* \x) "xx")
     ;(parses (rule \x [%]) "x")
     ;(parses (label :lbl \x) "x")
+
+    (parse \x "y")
+    ;(parse (* \x) "xxxxx")
     )
 
 )

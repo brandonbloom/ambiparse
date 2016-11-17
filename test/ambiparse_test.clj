@@ -24,6 +24,9 @@
     (a/+ \x) "xx" #{[\x \x]}
     ))
 
+(deftest errors-test
+  )
+
 (def Digit
   (a/rule (apply a/alt (map #(char (+ (int \0) %)) (range 10)))
           (- (-> % ::a/value int) (int \0))))

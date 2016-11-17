@@ -1,0 +1,13 @@
+ idea: ask vs tell -- you're told about parses/errors OR
+ you can ask for them.
+TODO: error reporting
+TODO: error recovery
+TODO: disambiguation filters:
+ - preceeds/follows restruction
+ - exclude
+ - prefer/avoid
+ - prioritize
+TODO: Consider cut operator. See:
+ Packrat Parsers Can Handle Practical Grammars in Mostly Constant Space
+ "Tell" version of errors - can "commit" or "abort" current node.
+
