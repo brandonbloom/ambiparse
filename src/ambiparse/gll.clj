@@ -24,9 +24,10 @@
 (def ^:dynamic queue)
 
 ;;; Debug state.
-;(def trace true)
 (def trace false)
-(def ^:dynamic fuel 0) ; steps to perform before giving up; 0 = disable.
+(def ^:dynamic fuel
+  "Steps to perform before giving up. Set to 0 to disable."
+  0)
 
 (defmacro log [& xs]
   (require 'fipp.edn)
@@ -48,11 +49,21 @@
 (defn dispatch [[i x]]
   (classify x))
 
-(doseq [sym '[init decorate passed]]
+;; Fully re-create multimethods for dev sanity.
+(doseq [sym '[init decorate passed failed]]
   (ns-unmap *ns* sym))
-(defmulti init dispatch)
-(defmulti decorate (fn [t by] (classify by)))
-(defmulti passed (fn [k t] (dispatch k)))
+
+(defmulti init
+  "Called when a parse node for a given key is first created."
+  dispatch)
+
+(defmulti decorate
+  "Applies a transformation to trees flowing along an edge."
+  (fn [t by] (classify by)))
+
+(defmulti passed
+  "A parse node that k depends successfully added a new parse."
+  (fn [k t] (dispatch k)))
 
 (def conjs (fnil conj #{}))
 
