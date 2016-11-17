@@ -37,8 +37,10 @@
 (def Space
   (a/+ \space))
 
+(declare Expr)
+
 (def Sum
-  (a/rule (a/cat (a/label :lhs Num) Space \+ Space (a/label :rhs Num))
+  (a/rule (a/cat (a/label :lhs #'Expr) Space \+ Space (a/label :rhs #'Expr))
           (+ (:lhs %) (:rhs %))))
 
 (def Expr
@@ -49,4 +51,5 @@
   (are [s n] (= (a/parse Expr s) n)
     "5" 5
     "15" 15
-    "2 + 3" 5))
+    "2 + 3" 5
+    "2 + 3 + 1" 6))

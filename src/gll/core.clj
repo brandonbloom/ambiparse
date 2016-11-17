@@ -204,7 +204,14 @@
   (add-edge i pat k :identity))
 
 (defmethod tell `label [[i [_ name pat] :as k] t]
-  (pass k (assoc t name (::value t))))
+  (let [t* (select-keys t [::begin ::end ::value])] ; Strip labels.
+    (pass k (assoc t* name (::value t)))))
+
+(defmethod init clojure.lang.Var [[i pat :as k]]
+  (add-edge i @pat k :identity))
+
+(defmethod tell clojure.lang.Var [[i pat :as k] t]
+  (pass k (assoc t ::var pat)))
 
 (defn exec [[op & _ :as msg]]
   (log (list 'exec msg))
@@ -241,7 +248,7 @@
          (map ::value))))
 
 (defn parse [pat s]
-  (let [ps (parses pat s)]
+  (let [ps (distinct (parses pat s))]
     (cond
       (next ps) (throw (ex-info "Ambiguous parse:" {:parses (take 2 ps)}))
       (seq ps) (first ps)
