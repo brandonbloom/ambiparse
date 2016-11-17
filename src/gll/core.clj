@@ -1,5 +1,5 @@
 (ns gll.core
-  (:refer-clojure :exclude [cat send])
+  (:refer-clojure :exclude [cat send * +])
   (:require [gll.util :refer :all]))
 
 (defn cat [& pats]
@@ -8,8 +8,30 @@
 (defn alt [& pats]
   (list* `alt pats))
 
-(defn rep [x]
-  (list `rep x))
+(defn * [pat]
+  (list `* pat))
+
+(defn + [pat]
+  (list `+ pat))
+
+(defn rule* [pat f]
+  (list `rule* pat f))
+
+(defmacro rule [pat & body]
+  `(rule* ~pat
+          (fn [{~'&begin :begin
+                ~'&end :end
+                ~'% :value
+                :as t#}]
+            (assoc t# :value (do ~@body)))))
+
+;(def trace true)
+(def trace false)
+
+(defmacro log [& xs]
+  (require 'fipp.edn)
+  (when trace
+    `(fipp.edn/pprint (list ~@xs))))
 
 (def ^:dynamic input)
 (def ^:dynamic graph)
@@ -40,7 +62,7 @@
 (def conjs (fnil conj #{}))
 
 (defn send [msg]
-  (prn (list 'send msg))
+  (log 'send msg)
   (update! queue conj msg)
   nil)
 
@@ -77,7 +99,7 @@
       (send [:tell dst (transform t label)]))))
 
 (defn fail [k t]
-  (prn 'fail k t))
+  (log 'fail k t))
 
 ;;XXX use me, add line/col wherever begin/env/idx occur.
 (defn advance [pos c]
@@ -95,25 +117,30 @@
         f (if (= x c) pass fail)]
     (f k t)))
 
+(defn pass-empty [[i & _ :as k]]
+  (log 'pass-empty k)
+  (pass k {:begin {:idx i}
+           :end {:idx i}
+           :value []}))
+
 (defmethod init `cat [[i [_ & pats] :as k]]
   (if (seq pats)
     (let [cont (add-node i [:seq pats k])]
       (add-edge i (first pats) cont :single))
-    (pass k {:begin {:idx i}
-             :end {:idx i}
-             :value []})))
+    (pass-empty k)))
 
 (defmethod tell :root [k t]
-  (prn 'parsed! t))
+  (log 'parsed! t)
+  (when (= (-> t :end :idx) (count input))
+    (pass k t)))
 
 (defmethod tell `cat [k t]
   (pass k t))
 
-(defmethod init :seq [[i [_ pats dst] :as k]]
+(defmethod init :seq [k]
   nil)
 
 (defmethod tell :seq [[i [_ pats dst]] t]
-  (prn 'tell-seq-dst dst)
   (if (next pats)
     (let [e (-> t :end :idx)]
       (add-edge e (second pats)
@@ -128,9 +155,40 @@
 (defmethod tell `alt [k t]
   (pass k t))
 
+(defmethod init `* [[i [_ pat] :as k]]
+  (let [cont (add-node i [:rep pat k])]
+    (add-edge i pat cont :single))
+  (pass-empty k))
+
+(defmethod init `+ [[i [_ pat] :as k]]
+  (let [cont (add-node i [:rep pat k])]
+    (add-edge i pat cont :single)))
+
+(defmethod tell `* [k t]
+  (pass k t))
+
+(defmethod tell `+ [k t]
+  (pass k t))
+
+(defmethod init :rep [k]
+  nil)
+
+(defmethod tell :rep [[i [_ pat dst]] t]
+  (let [e (-> t :end :idx)]
+    (add-edge e pat
+              [e [:rep pat dst]]
+              [:prefix t]))
+  (send [:tell dst t]))
+
+(defmethod init `rule* [[i [_ pat f] :as k]]
+  (add-edge i pat k :identity))
+
+(defmethod tell `rule* [[i [_ pat f] :as k] t]
+  (prn 'tell-rule* k f t)
+  (pass k (f t)))
+
 (defn exec [[op & _ :as msg]]
-  (println)
-  (prn (list 'exec msg))
+  (log (list 'exec msg))
   (case op
     :init (let [[_ k] msg]
             (init k))
@@ -142,7 +200,7 @@
     ))
 
 (defn pump []
-  (println "\n\npump")
+  (log 'pump)
   (let [q queue]
     (set! queue [])
     (run! exec q)))
@@ -153,35 +211,46 @@
 
 (def root [0 :root])
 
-(defn parse [n s]
+(defn parses [n s]
   (binding [input s
             graph {}
             queue []
-            fuel 10]
+            fuel 50] ;XXX Only enable when debugging.
     (add-edge 0 n root :identity)
     (while (running?)
       (update! fuel dec)
       (pump))
-    (state)
-    ))
+    (log 'final-state= (state))
+    (->> (get-in graph [0 :root :parses])
+         (map :value))))
+
+(defn parse [n s]
+  (let [ps (parses n s)]
+    (cond
+      (next ps) (throw (ex-info "Ambiguous parse:" {:parses (take 2 ps)}))
+      (seq ps) (first ps)
+      :else (throw (ex-info "Parse failed" {:error "TODO"}))))) ;XXX
 
 (comment
 
   (require 'fipp.edn)
   (fipp.edn/pprint
-    ;(parse \x "x")
-    ;(parse (cat) "")
-    ;(parse (cat) "x")
-    ;(parse (cat \x) "x")
-    ;(parse (cat \x \y) "x")
-    ;(parse (cat \x \y) "xy")
-    ;(parse (cat \x \y \z) "xy")
-    ;(parse (cat \x \y \z) "xyz")
-    ;(parse (alt) "")
-    ;(parse (alt \x) "x")
-    ;(parse (alt \x \y) "x")
-    ;(parse (alt \x \y) "y")
-    (parse (alt \x \y) "z")
+    ;(parses \x "x")
+    ;(parses (cat) "")
+    ;(parses (cat) "x")
+    ;(parses (cat \x) "x")
+    ;(parses (cat \x \y) "x")
+    ;(parses (cat \x \y) "xy")
+    ;(parses (cat \x \y \z) "xy")
+    ;(parses (cat \x \y \z) "xyz")
+    ;(parses (alt) "")
+    ;(parses (alt \x) "x")
+    ;(parses (alt \x \y) "x")
+    ;(parses (alt \x \y) "y")
+    ;(parses (alt \x \y) "z")
+    ;(parses (* \x) "x")
+    ;(parses (* \x) "xx")
+    (parses (rule \x [&begin &end %]) "x")
     )
 
 )
