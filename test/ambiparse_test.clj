@@ -1,6 +1,6 @@
-(ns gll.core-test
+(ns ambiparse-test
   (:require [clojure.test :refer :all]
-            [gll.core :as a]))
+            [ambiparse :as a]))
 
 (deftest parses-test
   (are [pat s ts] (= (set (a/parses pat s)) ts)

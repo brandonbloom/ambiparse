@@ -1,29 +1,9 @@
-(ns gll.core
-  (:refer-clojure :exclude [cat send * +])
-  (:require [gll.util :refer :all]))
+(ns ambiparse.gll
+  (:refer-clojure :exclude [send])
+  (:require [ambiparse.util :refer :all]))
 
-(defn cat [& pats]
-  (list* `cat pats))
-
-(defn alt [& pats]
-  (list* `alt pats))
-
-(defn * [pat]
-  (list `* pat))
-
-(defn + [pat]
-  (list `+ pat))
-
-(defn -rule [pat f]
-  (list `-rule pat f))
-
-(defmacro rule [pat & body]
-  `(-rule ~pat
-          (fn [~'%]
-            (assoc ~'% ::value (do ~@body)))))
-
-(defn label [name pat]
-  (list `label name pat))
+(create-ns 'ambiparse)
+(alias 'a 'ambiparse)
 
 ;;; Glossary:
 ;;;   i = index in to source string
@@ -98,12 +78,12 @@
   t)
 
 (defmethod decorate :prefix [x [_ xs]]
-  (merge xs x {::begin (::begin xs)
-               ::end (::end x)
-               ::value (conj (::value xs) (::value x))}))
+  (merge xs x {::a/begin (::a/begin xs)
+               ::a/end (::a/end x)
+               ::a/value (conj (::a/value xs) (::a/value x))}))
 
 (defmethod decorate :single [t _]
-  (update t ::value vector))
+  (update t ::a/value vector))
 
 (defn pass [k t]
   (when-not (get-in graph (conj k :parses t))
@@ -125,19 +105,19 @@
 (defmethod init java.lang.Character [[i c :as k]]
   (let [x (when (< i (count input))
             (nth input i))
-        t {::begin {:idx i}
-           ::end {:idx (inc i)}
-           ::value x}
+        t {::a/begin {:idx i}
+           ::a/end {:idx (inc i)}
+           ::a/value x}
         f (if (= x c) pass fail)]
     (f k t)))
 
 (defn pass-empty [[i & _ :as k]]
   (log 'pass-empty k)
-  (pass k {::begin {:idx i}
-           ::end {:idx i}
-           ::value []}))
+  (pass k {::a/begin {:idx i}
+           ::a/end {:idx i}
+           ::a/value []}))
 
-(defmethod init `cat [[i [_ & pats] :as k]]
+(defmethod init 'ambiparse/cat [[i [_ & pats] :as k]]
   (if (seq pats)
     (let [cont (add-node i [:seq pats k])]
       (add-edge i (first pats) cont :single))
@@ -145,10 +125,10 @@
 
 (defmethod tell :root [k t]
   (log 'parsed! t)
-  (when (= (-> t ::end :idx) (count input))
+  (when (= (-> t ::a/end :idx) (count input))
     (pass k t)))
 
-(defmethod tell `cat [k t]
+(defmethod tell 'ambiparse/cat [k t]
   (pass k t))
 
 (defmethod init :seq [k]
@@ -156,62 +136,62 @@
 
 (defmethod tell :seq [[i [_ pats dst]] t]
   (if (next pats)
-    (let [e (-> t ::end :idx)]
+    (let [e (-> t ::a/end :idx)]
       (add-edge e (second pats)
                 [e [:seq (next pats) dst]]
                 [:prefix t]))
     (send [:tell dst t])))
 
-(defmethod init `alt [[i [_ & pats] :as k]]
+(defmethod init 'ambiparse/alt [[i [_ & pats] :as k]]
   (doseq [pat pats]
     (add-edge i pat k :identity)))
 
-(defmethod tell `alt [k t]
+(defmethod tell 'ambiparse/alt [k t]
   (pass k t))
 
-(defmethod init `* [[i [_ pat] :as k]]
+(defmethod init 'ambiparse/* [[i [_ pat] :as k]]
   (let [cont (add-node i [:rep pat k])]
     (add-edge i pat cont :single))
   (pass-empty k))
 
-(defmethod init `+ [[i [_ pat] :as k]]
+(defmethod init 'ambiparse/+ [[i [_ pat] :as k]]
   (let [cont (add-node i [:rep pat k])]
     (add-edge i pat cont :single)))
 
-(defmethod tell `* [k t]
+(defmethod tell 'ambiparse/* [k t]
   (pass k t))
 
-(defmethod tell `+ [k t]
+(defmethod tell 'ambiparse/+ [k t]
   (pass k t))
 
 (defmethod init :rep [k]
   nil)
 
 (defmethod tell :rep [[i [_ pat dst]] t]
-  (let [e (-> t ::end :idx)]
+  (let [e (-> t ::a/end :idx)]
     (add-edge e pat
               [e [:rep pat dst]]
               [:prefix t]))
   (send [:tell dst t]))
 
-(defmethod init `-rule [[i [_ pat f] :as k]]
+(defmethod init 'ambiparse/-rule [[i [_ pat f] :as k]]
   (add-edge i pat k :identity))
 
-(defmethod tell `-rule [[i [_ pat f] :as k] t]
+(defmethod tell 'ambiparse/-rule [[i [_ pat f] :as k] t]
   (pass k (f t)))
 
-(defmethod init `label [[i [_ name pat] :as k]]
+(defmethod init 'ambiparse/label [[i [_ name pat] :as k]]
   (add-edge i pat k :identity))
 
-(defmethod tell `label [[i [_ name pat] :as k] t]
-  (let [t* (select-keys t [::begin ::end ::value])] ; Strip labels.
-    (pass k (assoc t* name (::value t)))))
+(defmethod tell 'ambiparse/label [[i [_ name pat] :as k] t]
+  (let [t* (select-keys t [::a/begin ::a/end ::a/value])] ; Strip labels.
+    (pass k (assoc t* name (::a/value t)))))
 
 (defmethod init clojure.lang.Var [[i pat :as k]]
   (add-edge i @pat k :identity))
 
 (defmethod tell clojure.lang.Var [[i pat :as k] t]
-  (pass k (assoc t ::var pat)))
+  (pass k (assoc t ::a/var pat)))
 
 (defn exec [[op & _ :as msg]]
   (log (list 'exec msg))
@@ -245,7 +225,7 @@
       (pump))
     (log 'final-state= (state))
     (->> (get-in graph [0 :root :parses])
-         (map ::value))))
+         (map ::a/value))))
 
 (defn parse [pat s]
   (let [ps (distinct (parses pat s))]
@@ -253,28 +233,3 @@
       (next ps) (throw (ex-info "Ambiguous parse:" {:parses (take 2 ps)}))
       (seq ps) (first ps)
       :else (throw (ex-info "Parse failed" {:error "TODO"}))))) ;XXX
-
-(comment
-
-  (require 'fipp.edn)
-  (fipp.edn/pprint
-    (parses \x "x")
-    ;(parses (cat) "")
-    ;(parses (cat) "x")
-    ;(parses (cat \x) "x")
-    ;(parses (cat \x \y) "x")
-    ;(parses (cat \x \y) "xy")
-    ;(parses (cat \x \y \z) "xy")
-    ;(parses (cat \x \y \z) "xyz")
-    ;(parses (alt) "")
-    ;(parses (alt \x) "x")
-    ;(parses (alt \x \y) "x")
-    ;(parses (alt \x \y) "y")
-    ;(parses (alt \x \y) "z")
-    ;(parses (* \x) "x")
-    ;(parses (* \x) "xx")
-    ;(parses (rule \x [%]) "x")
-    ;(parses (label :lbl \x) "x")
-    )
-
-)
