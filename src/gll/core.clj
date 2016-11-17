@@ -36,18 +36,20 @@
 ;;;   dst = destination key of edge
 ;;;   d = decorator attached to edges
 
+;;; Essential state.
+(def ^:dynamic input)
+(def ^:dynamic graph)
+(def ^:dynamic queue)
+
+;;; Debug state.
 ;(def trace true)
 (def trace false)
+(def ^:dynamic fuel 0) ; steps to perform before giving up; 0 = disable.
 
 (defmacro log [& xs]
   (require 'fipp.edn)
   (when trace
     `(fipp.edn/pprint (list ~@xs))))
-
-(def ^:dynamic input)
-(def ^:dynamic graph)
-(def ^:dynamic queue)
-(def ^:dynamic fuel)
 
 (defn state []
   {:input input
@@ -215,20 +217,17 @@
     (set! queue [])
     (run! exec q)))
 
-(defn running? []
-  (and (pos? fuel)
-       (seq queue)))
-
 (def root [0 :root])
 
 (defn parses [pat s]
   (binding [input s
             graph {}
             queue []
-            fuel 50] ;XXX Only enable when debugging.
+            fuel fuel]
     (add-edge 0 pat root :identity)
-    (while (running?)
-      (update! fuel dec)
+    (while (seq queue)
+      (when (zero? (update! fuel dec))
+        (throw (Exception. "out of fuel!")))
       (pump))
     (log 'final-state= (state))
     (->> (get-in graph [0 :root :parses])
