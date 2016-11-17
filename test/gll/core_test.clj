@@ -28,9 +28,22 @@
   (a/rule (apply a/alt (map #(char (+ (int \0) %)) (range 10)))
           (- (int %) (int \0))))
 
+(def Num
+  (a/rule (a/+ Digit)
+          (reduce (fn [n d]
+                    (+ (* n 10) d))
+                  0 %)))
+
+(def Space
+  (a/+ \space))
+
+(def Sum
+  (a/cat Num Space \+ Space Num))
+
 (def Expr
-  Digit)
+  Num)
 
 (deftest calc-test
   (are [s n] (= (a/parse Expr s) n)
-    "5" 5))
+    "5" 5
+    "15" 15))

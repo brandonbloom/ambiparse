@@ -25,6 +25,17 @@
                 :as t#}]
             (assoc t# :value (do ~@body)))))
 
+;;; Glossary:
+;;;   i = index in to source string
+;;;   pat = pattern
+;;;   k = key of node (pair of i and pat)
+;;;   t = tree
+;;;   c = char (or other atomic terminal)
+;;;   s = string (ie. sequence of terminals)
+;;;   src = source key of edge
+;;;   dst = destination key of edge
+;;;   d = decorator attached to edges
+
 ;(def trace true)
 (def trace false)
 
@@ -53,10 +64,10 @@
 (defn dispatch [[i x]]
   (classify x))
 
-(doseq [sym '[init transform tell]]
+(doseq [sym '[init decorate tell]]
   (ns-unmap *ns* sym))
 (defmulti init dispatch)
-(defmulti transform (fn [t by] (classify by)))
+(defmulti decorate (fn [t by] (classify by)))
 (defmulti tell (fn [k t] (dispatch k)))
 
 (def conjs (fnil conj #{}))
@@ -72,31 +83,31 @@
       (send [:init k]))
     k))
 
-(defn add-edge [i pat dst label]
+(defn add-edge [i pat dst d]
   (let [k (add-node i pat)]
-    (when-not (get-in graph (conj k :edges dst label))
-      (update! graph update-in (conj k :edges dst) conjs label)
-      (send [:link k dst label]))
+    (when-not (get-in graph (conj k :edges dst d))
+      (update! graph update-in (conj k :edges dst) conjs d)
+      (send [:link k dst d]))
     k))
 
-(defmethod transform :identity [t _]
+(defmethod decorate :identity [t _]
   t)
 
-(defmethod transform :prefix [{x :value, :keys [end]}
+(defmethod decorate :prefix [{x :value, :keys [end]}
                               [_ {xs :value, :keys [begin]}]]
   {:begin begin
    :value (conj xs x)
    :end end})
 
-(defmethod transform :single [t _]
+(defmethod decorate :single [t _]
   (update t :value vector))
 
 (defn pass [k t]
   (when-not (get-in graph (conj k :parses t))
     (update! graph update-in (conj k :parses) conjs t)
-    (doseq [[dst labels] (get-in graph (conj k :edges))
-            label labels]
-      (send [:tell dst (transform t label)]))))
+    (doseq [[dst ds] (get-in graph (conj k :edges))
+            d ds]
+      (send [:tell dst (decorate t d)]))))
 
 (defn fail [k t]
   (log 'fail k t))
@@ -184,7 +195,6 @@
   (add-edge i pat k :identity))
 
 (defmethod tell `rule* [[i [_ pat f] :as k] t]
-  (prn 'tell-rule* k f t)
   (pass k (f t)))
 
 (defn exec [[op & _ :as msg]]
@@ -192,9 +202,9 @@
   (case op
     :init (let [[_ k] msg]
             (init k))
-    :link (let [[_ src dst label] msg]
+    :link (let [[_ src dst d] msg]
             (doseq [t (get-in graph (conj src :parses))]
-              (send [:tell dst (transform t label)])))
+              (send [:tell dst (decorate t d)])))
     :tell (let [[_ k t] msg]
             (tell k t))
     ))
@@ -211,12 +221,12 @@
 
 (def root [0 :root])
 
-(defn parses [n s]
+(defn parses [pat s]
   (binding [input s
             graph {}
             queue []
             fuel 50] ;XXX Only enable when debugging.
-    (add-edge 0 n root :identity)
+    (add-edge 0 pat root :identity)
     (while (running?)
       (update! fuel dec)
       (pump))
@@ -224,8 +234,8 @@
     (->> (get-in graph [0 :root :parses])
          (map :value))))
 
-(defn parse [n s]
-  (let [ps (parses n s)]
+(defn parse [pat s]
+  (let [ps (parses pat s)]
     (cond
       (next ps) (throw (ex-info "Ambiguous parse:" {:parses (take 2 ps)}))
       (seq ps) (first ps)
