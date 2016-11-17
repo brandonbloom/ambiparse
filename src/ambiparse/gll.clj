@@ -93,9 +93,6 @@
                ::a/end (::a/end x)
                ::a/value (conj (::a/value xs) (::a/value x))}))
 
-(defmethod decorate :single [t _]
-  (update t ::a/value vector))
-
 (defn pass [k t]
   (when-not (get-in graph (conj k :parses t))
     (update! graph update-in (conj k :parses) conjs t)
@@ -122,16 +119,18 @@
         f (if (= x c) pass fail)]
     (f k t)))
 
+(defn empty-at [i]
+  {::a/begin {:idx i}
+   ::a/end {:idx i}
+   ::a/value []})
+
 (defn pass-empty [[i & _ :as k]]
-  (log 'pass-empty k)
-  (pass k {::a/begin {:idx i}
-           ::a/end {:idx i}
-           ::a/value []}))
+  (pass k (empty-at i)))
 
 (defmethod init 'ambiparse/cat [[i [_ & pats] :as k]]
   (if (seq pats)
     (let [cont (add-node i [:seq pats k])]
-      (add-edge i (first pats) cont :single))
+      (add-edge i (first pats) cont [:prefix (empty-at i)]))
     (pass-empty k)))
 
 (defmethod passed :root [k t]
@@ -162,12 +161,12 @@
 
 (defmethod init 'ambiparse/* [[i [_ pat] :as k]]
   (let [cont (add-node i [:rep pat k])]
-    (add-edge i pat cont :single))
+    (add-edge i pat cont [:prefix (empty-at i)]))
   (pass-empty k))
 
 (defmethod init 'ambiparse/+ [[i [_ pat] :as k]]
   (let [cont (add-node i [:rep pat k])]
-    (add-edge i pat cont :single)))
+    (add-edge i pat cont [:prefix (empty-at i)])))
 
 (defmethod passed 'ambiparse/* [k t]
   (pass k t))
