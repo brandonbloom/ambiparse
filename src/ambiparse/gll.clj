@@ -48,11 +48,11 @@
 (defn dispatch [[i x]]
   (classify x))
 
-(doseq [sym '[init decorate tell]]
+(doseq [sym '[init decorate passed]]
   (ns-unmap *ns* sym))
 (defmulti init dispatch)
 (defmulti decorate (fn [t by] (classify by)))
-(defmulti tell (fn [k t] (dispatch k)))
+(defmulti passed (fn [k t] (dispatch k)))
 
 (def conjs (fnil conj #{}))
 
@@ -90,7 +90,7 @@
     (update! graph update-in (conj k :parses) conjs t)
     (doseq [[dst ds] (get-in graph (conj k :edges))
             d ds]
-      (send [:tell dst (decorate t d)]))))
+      (send [:pass dst (decorate t d)]))))
 
 (defn fail [k t]
   (log 'fail k t))
@@ -123,30 +123,30 @@
       (add-edge i (first pats) cont :single))
     (pass-empty k)))
 
-(defmethod tell :root [k t]
+(defmethod passed :root [k t]
   (log 'parsed! t)
   (when (= (-> t ::a/end :idx) (count input))
     (pass k t)))
 
-(defmethod tell 'ambiparse/cat [k t]
+(defmethod passed 'ambiparse/cat [k t]
   (pass k t))
 
 (defmethod init :seq [k]
   nil)
 
-(defmethod tell :seq [[i [_ pats dst]] t]
+(defmethod passed :seq [[i [_ pats dst]] t]
   (if (next pats)
     (let [e (-> t ::a/end :idx)]
       (add-edge e (second pats)
                 [e [:seq (next pats) dst]]
                 [:prefix t]))
-    (send [:tell dst t])))
+    (send [:pass dst t])))
 
 (defmethod init 'ambiparse/alt [[i [_ & pats] :as k]]
   (doseq [pat pats]
     (add-edge i pat k :identity)))
 
-(defmethod tell 'ambiparse/alt [k t]
+(defmethod passed 'ambiparse/alt [k t]
   (pass k t))
 
 (defmethod init 'ambiparse/* [[i [_ pat] :as k]]
@@ -158,39 +158,39 @@
   (let [cont (add-node i [:rep pat k])]
     (add-edge i pat cont :single)))
 
-(defmethod tell 'ambiparse/* [k t]
+(defmethod passed 'ambiparse/* [k t]
   (pass k t))
 
-(defmethod tell 'ambiparse/+ [k t]
+(defmethod passed 'ambiparse/+ [k t]
   (pass k t))
 
 (defmethod init :rep [k]
   nil)
 
-(defmethod tell :rep [[i [_ pat dst]] t]
+(defmethod passed :rep [[i [_ pat dst]] t]
   (let [e (-> t ::a/end :idx)]
     (add-edge e pat
               [e [:rep pat dst]]
               [:prefix t]))
-  (send [:tell dst t]))
+  (send [:pass dst t]))
 
 (defmethod init 'ambiparse/-rule [[i [_ pat f] :as k]]
   (add-edge i pat k :identity))
 
-(defmethod tell 'ambiparse/-rule [[i [_ pat f] :as k] t]
+(defmethod passed 'ambiparse/-rule [[i [_ pat f] :as k] t]
   (pass k (f t)))
 
 (defmethod init 'ambiparse/label [[i [_ name pat] :as k]]
   (add-edge i pat k :identity))
 
-(defmethod tell 'ambiparse/label [[i [_ name pat] :as k] t]
+(defmethod passed 'ambiparse/label [[i [_ name pat] :as k] t]
   (let [t* (select-keys t [::a/begin ::a/end ::a/value])] ; Strip labels.
     (pass k (assoc t* name (::a/value t)))))
 
 (defmethod init clojure.lang.Var [[i pat :as k]]
   (add-edge i @pat k :identity))
 
-(defmethod tell clojure.lang.Var [[i pat :as k] t]
+(defmethod passed clojure.lang.Var [[i pat :as k] t]
   (pass k (assoc t ::a/var pat)))
 
 (defn exec [[op & _ :as msg]]
@@ -200,9 +200,9 @@
             (init k))
     :link (let [[_ src dst d] msg]
             (doseq [t (get-in graph (conj src :parses))]
-              (send [:tell dst (decorate t d)])))
-    :tell (let [[_ k t] msg]
-            (tell k t))
+              (send [:pass dst (decorate t d)])))
+    :pass (let [[_ k t] msg]
+            (passed k t))
     ))
 
 (defn pump []
