@@ -14,19 +14,21 @@
 (defn + [pat]
   (list `+ pat))
 
-(defn rule* [pat f]
-  (list `rule* pat f))
+(defn -rule [pat f]
+  (list `-rule pat f))
 
 (defmacro rule [pat & body]
-  `(rule* ~pat
-          (fn [{~'&begin :begin
-                ~'&end :end
-                ~'% :value
-                :as t#}]
-            (assoc t# :value (do ~@body)))))
+  `(-rule ~pat
+          (fn [~'%]
+            (assoc ~'% ::value (do ~@body)))))
+
+(defn label [name pat]
+  (list `label name pat))
 
 ;;; Glossary:
 ;;;   i = index in to source string
+;;;   b = begin index of span
+;;;   e = end index of span
 ;;;   pat = pattern
 ;;;   k = key of node (pair of i and pat)
 ;;;   t = tree
@@ -95,14 +97,13 @@
 (defmethod decorate :identity [t _]
   t)
 
-(defmethod decorate :prefix [{x :value, :keys [end]}
-                              [_ {xs :value, :keys [begin]}]]
-  {:begin begin
-   :value (conj xs x)
-   :end end})
+(defmethod decorate :prefix [x [_ xs]]
+  (merge xs x {::begin (::begin xs)
+               ::end (::end x)
+               ::value (conj (::value xs) (::value x))}))
 
 (defmethod decorate :single [t _]
-  (update t :value vector))
+  (update t ::value vector))
 
 (defn pass [k t]
   (when-not (get-in graph (conj k :parses t))
@@ -124,17 +125,17 @@
 (defmethod init java.lang.Character [[i c :as k]]
   (let [x (when (< i (count input))
             (nth input i))
-        t {:begin {:idx i}
-           :end {:idx (inc i)}
-           :value x}
+        t {::begin {:idx i}
+           ::end {:idx (inc i)}
+           ::value x}
         f (if (= x c) pass fail)]
     (f k t)))
 
 (defn pass-empty [[i & _ :as k]]
   (log 'pass-empty k)
-  (pass k {:begin {:idx i}
-           :end {:idx i}
-           :value []}))
+  (pass k {::begin {:idx i}
+           ::end {:idx i}
+           ::value []}))
 
 (defmethod init `cat [[i [_ & pats] :as k]]
   (if (seq pats)
@@ -144,7 +145,7 @@
 
 (defmethod tell :root [k t]
   (log 'parsed! t)
-  (when (= (-> t :end :idx) (count input))
+  (when (= (-> t ::end :idx) (count input))
     (pass k t)))
 
 (defmethod tell `cat [k t]
@@ -155,7 +156,7 @@
 
 (defmethod tell :seq [[i [_ pats dst]] t]
   (if (next pats)
-    (let [e (-> t :end :idx)]
+    (let [e (-> t ::end :idx)]
       (add-edge e (second pats)
                 [e [:seq (next pats) dst]]
                 [:prefix t]))
@@ -187,17 +188,23 @@
   nil)
 
 (defmethod tell :rep [[i [_ pat dst]] t]
-  (let [e (-> t :end :idx)]
+  (let [e (-> t ::end :idx)]
     (add-edge e pat
               [e [:rep pat dst]]
               [:prefix t]))
   (send [:tell dst t]))
 
-(defmethod init `rule* [[i [_ pat f] :as k]]
+(defmethod init `-rule [[i [_ pat f] :as k]]
   (add-edge i pat k :identity))
 
-(defmethod tell `rule* [[i [_ pat f] :as k] t]
+(defmethod tell `-rule [[i [_ pat f] :as k] t]
   (pass k (f t)))
+
+(defmethod init `label [[i [_ name pat] :as k]]
+  (add-edge i pat k :identity))
+
+(defmethod tell `label [[i [_ name pat] :as k] t]
+  (pass k (assoc t name (::value t))))
 
 (defn exec [[op & _ :as msg]]
   (log (list 'exec msg))
@@ -231,7 +238,7 @@
       (pump))
     (log 'final-state= (state))
     (->> (get-in graph [0 :root :parses])
-         (map :value))))
+         (map ::value))))
 
 (defn parse [pat s]
   (let [ps (parses pat s)]
@@ -244,7 +251,7 @@
 
   (require 'fipp.edn)
   (fipp.edn/pprint
-    ;(parses \x "x")
+    (parses \x "x")
     ;(parses (cat) "")
     ;(parses (cat) "x")
     ;(parses (cat \x) "x")
@@ -259,7 +266,8 @@
     ;(parses (alt \x \y) "z")
     ;(parses (* \x) "x")
     ;(parses (* \x) "xx")
-    (parses (rule \x [&begin &end %]) "x")
+    ;(parses (rule \x [%]) "x")
+    ;(parses (label :lbl \x) "x")
     )
 
 )

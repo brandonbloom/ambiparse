@@ -26,24 +26,27 @@
 
 (def Digit
   (a/rule (apply a/alt (map #(char (+ (int \0) %)) (range 10)))
-          (- (int %) (int \0))))
+          (- (-> % ::a/value int) (int \0))))
 
 (def Num
   (a/rule (a/+ Digit)
           (reduce (fn [n d]
                     (+ (* n 10) d))
-                  0 %)))
+                  0 (::a/value %))))
 
 (def Space
   (a/+ \space))
 
 (def Sum
-  (a/cat Num Space \+ Space Num))
+  (a/rule (a/cat (a/label :lhs Num) Space \+ Space (a/label :rhs Num))
+          (+ (:lhs %) (:rhs %))))
 
 (def Expr
-  Num)
+  (a/alt Num
+         Sum))
 
 (deftest calc-test
   (are [s n] (= (a/parse Expr s) n)
     "5" 5
-    "15" 15))
+    "15" 15
+    "2 + 3" 5))
