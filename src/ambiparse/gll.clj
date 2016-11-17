@@ -215,7 +215,7 @@
 
 (defn parses [pat s]
   (binding [input s
-            graph {}
+            graph []
             queue []
             fuel fuel]
     (add-edge 0 pat root :identity)
