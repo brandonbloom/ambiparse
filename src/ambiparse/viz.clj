@@ -2,12 +2,18 @@
   (:require [dorothy.core :as d]
             [fipp.edn :refer [pprint]]))
 
+(alias 'a 'ambiparse)
+
+(defn pps [x]
+  (with-out-str (pprint x {:width 20})))
+
 (defn edge-label [x]
-  (with-out-str
-    (-> x
-        (update-in [:prefix :ambiparse/begin] :idx)
-        (update-in [:prefix :ambiparse/end] :idx)
-        (pprint {:width 20}))))
+  (if x
+    (str (-> x :prefix ::a/begin :idx) " - " (-> x :prefix ::a/end :idx) "\n"
+         "pre: " (-> x :prefix ::a/value pps)
+         (when-let [cont (:continue x)]
+           (str "cont: " (pps cont))))
+    ""))
 
 (defn identify [ids k]
   (or (@ids k)

@@ -56,8 +56,12 @@
   (party (alt \x \y) "x")
   (party (alt \x \y) "y")
   (party (alt \x \y) "z")
+  (party (* \x) "")
   (party (* \x) "x")
   (party (* \x) "xx")
+  (party (+ \x) "")
+  (party (+ \x) "x")
+  (party (+ \x) "xx")
   (party (rule \x [%]) "x")
   (party (label :lbl \x) "x")
 

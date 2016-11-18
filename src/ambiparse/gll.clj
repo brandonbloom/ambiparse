@@ -33,7 +33,7 @@
 (def trace false)
 (def ^:dynamic fuel
   "Steps to perform before giving up. Set to 0 to disable."
-  0)
+  200)
 
 (defmacro log [& xs]
   (require 'fipp.edn)
@@ -82,16 +82,17 @@
   "Asks k for a failure."
   dispatch)
 
+(defn generated [k]
+  (get-in graph (conj k :generated)))
+
 (defn failure
   ([] (-failure root))
   ([[i & _ :as k]]
-   (if (<= (count input) i)
-     {::pos (pos-at i)
-      ::message "Unexpected end of input"}
-     (-failure k))))
-
-(defn generated [k]
-  (get-in graph (conj k :generated)))
+   (cond
+     (generated k) nil
+     (< (count input) i) {::pos (pos-at i)
+                          ::message "Unexpected end of input"}
+     :else (-failure k))))
 
 (defn received [k]
   (get-in graph (conj k :received)))
@@ -99,33 +100,38 @@
 (def conjs (fnil conj #{}))
 
 (defn send [msg]
-  (log 'send msg)
+  ;(log 'send msg)
   (update! queue conj msg)
   nil)
 
 (defn add-node [i pat]
   (let [k [i pat]]
     (when-not (get-in graph k)
+      (update! graph assoc-in k {})
       (send [:init k]))
     k))
 
-(defn add-edge [i pat dst d]
-  (let [k (add-node i pat)]
-    (when-not (get-in graph (conj k :edges dst d))
-      (update! graph update-in (conj k :edges dst) conjs d)
-      (send [:link k dst d]))
-    k))
-
 (defn decorate
-  "Applies a transformation to trees flowing along an edge to a cat node."
+  "Applies a transformation to trees flowing along an edge."
   [t {:as d :keys [prefix continue]}]
   (if d
     (merge prefix t
            {::a/begin (::a/begin prefix)
             ::a/end (::a/end t)
-            ::a/value (conj (::a/value prefix) (::a/value t))
-            ::a/continue continue})
+            ::a/value (conj (::a/value prefix) (::a/value t))}
+           (when continue
+             {::a/continue continue}))
     t))
+
+(defn add-edge [i pat dst d]
+  (let [k (add-node i pat)]
+    (when-not (get-in graph (conj k :edges dst d))
+      (update! graph update-in (conj k :edges dst) conjs d)
+      ;; Replay previously generated parses.
+      (doseq [t (get-in graph (conj k :generated))]
+        (send [:pass dst (decorate t d)])
+        (update! graph update-in (conj k :received) conjs t)))
+    k))
 
 (defn pass [k t] ;XXX rename to "generate?" or "emit?"
   (when-not (get-in graph (conj k :generated t))
@@ -138,12 +144,13 @@
   (add-edge i pat k nil))
 
 (defmethod passed :root [k t]
-  (log 'parsed! t)
   ;;TODO: Move this filter to the sender to minimize message traffic.
   ;; Can be done recursively, so any node that is in some sort of
   ;; "tail position" can drop interior parse messages. h/t Mark Engelberg.
   ;; This will also eliminate the explicit root node completely.
+  (log 'parsed? t)
   (when (= (-> t ::a/end :idx) (count input))
+    (log 'parsed! t)
     (pass k t)))
 
 (defmethod -failure :root [[i [_ pat]]]
@@ -186,22 +193,18 @@
      ::a/end p
      ::a/value []}))
 
-(defn pass-empty [[i & _ :as k]] ;;XXX delete me?
-  (pass k (empty-at i)))
-
-(defn do-cat [prefix i k pats]
+(defn do-cat [t k pats]
   (if-let [[p & ps] pats]
-    (add-edge i p k {:prefix prefix :continue ps})
-    (pass k (dissoc prefix ::a/continue))))
+    (let [i (-> t ::a/end :idx)
+          d {:prefix t :continue ps}]
+      (add-edge i p k d))
+    (pass k t)))
 
 (defmethod init 'ambiparse/cat [[i [_ & pats] :as k]]
-  (do-cat (empty-at i) i k pats))
+  (do-cat (empty-at i) k pats))
 
 (defmethod passed 'ambiparse/cat [k t]
-  (update! graph update-in (conj k :received) conjs t)
-  (let [e (-> t ::a/end :idx)
-        pats (::a/continue t)]
-    (do-cat t e k pats)))
+  (do-cat (dissoc t ::a/continue) k (::a/continue t)))
 
 (defmethod -failure 'ambiparse/cat [[i [_ & pats] :as k]]
   (if-let [t (when-let [rs (seq (received k))]
@@ -218,30 +221,28 @@
 (defmethod passed 'ambiparse/alt [k t]
   (pass k t))
 
-(defmethod init 'ambiparse/* [[i [_ pat] :as k]]
-  (let [cont (add-node i [:rep pat k])]
-    (add-edge i pat cont {:prefix (empty-at i)}))
-  (pass-empty k))
+(defmethod -failure 'ambiparse/alt [k]
+  :todo-alt-failure) ;XXX
+
+(defn do-rep [[_ [_ pat] :as k] t]
+  (pass k t)
+  (let [i (-> t ::a/end :idx)]
+    (add-edge i pat k {:prefix t})))
+
+(defmethod init 'ambiparse/* [[i _ :as k]]
+  (do-rep k (empty-at i)))
 
 (defmethod init 'ambiparse/+ [[i [_ pat] :as k]]
-  (let [cont (add-node i [:rep pat k])]
-    (add-edge i pat cont {:prefix (empty-at i)})))
+  (add-edge i pat k {:prefix (empty-at i)}))
+
+(defmethod -failure 'ambiparse/+ [k]
+  :todo-plus-failure) ;XXX
 
 (defmethod passed 'ambiparse/* [k t]
-  (pass k t))
+  (do-rep k t))
 
 (defmethod passed 'ambiparse/+ [k t]
-  (pass k t))
-
-(defmethod init :rep [k]
-  nil)
-
-(defmethod passed :rep [[i [_ pat dst]] t]
-  (let [e (-> t ::a/end :idx)]
-    (add-edge e pat
-              [e [:rep pat dst]]
-              {:prefix t}))
-  (send [:pass dst t]))
+  (do-rep k t))
 
 (defmethod init 'ambiparse/-rule [[i [_ pat f] :as k]]
   (add-edge i pat k nil))
@@ -267,12 +268,9 @@
   (case op
     :init (let [[_ k] msg]
             (init k))
-    :link (let [[_ src dst d] msg]
-            ;; Replay previously generated parses.
-            (doseq [t (get-in graph (conj src :generated))]
-              (send [:pass dst (decorate t d)])))
     :pass (let [[_ k t] msg]
-            (passed k t))
+            (when-not (get-in graph (conj k :received t))
+              (passed k t)))
     ))
 
 (defn pump []
@@ -282,14 +280,17 @@
     (doseq [msg q]
       (when (zero? (update! fuel dec))
         (throw (Exception. "out of fuel!")))
-      (exec msg))
-    (run! exec q)))
+      (exec msg))))
 
 (defn run []
   (apply add-node root)
-  (while (seq queue)
-    (pump))
-  (log 'final-state= (state)))
+  (try
+    (while (seq queue)
+      (pump))
+    (finally
+      (log 'final-state= (state))
+      ;(ambiparse.viz/show! graph)
+      )))
 
 (defn with-run-fn [pat s f]
   (binding [input s
