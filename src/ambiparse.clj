@@ -1,7 +1,9 @@
 (ns ambiparse
-  (:refer-clojure :exclude [cat * +])
+  (:refer-clojure :exclude [cat * + filter remove])
   (:require [ambiparse.gll :as gll]
             [ambiparse.util :refer :all]))
+
+;;; Primitives.
 
 (defn cat [& pats]
   (list* `cat pats))
@@ -35,6 +37,15 @@
           (apply alt pat pats)
           pat)))
 
+(defn -filter [f expr pat]
+  (list `filter f expr pat))
+
+(defmacro filter [f pat]
+  `(-filter ~f '~f ~pat))
+
+
+;;; Execution.
+
 (defn parses [pat s]
   (gll/with-run pat s
     (gll/parses)))
@@ -47,6 +58,9 @@
   (gll/with-run pat s
     (gll/parse!)))
 
+
+;;; Library.
+
 (defn length [t]
   (- (-> t ::end :idx) (-> t ::begin :idx)))
 
@@ -55,6 +69,10 @@
 
 (defn greedy [pat]
   (prefer (comparator-key count) pat))
+
+(defmacro remove [f pat]
+  `(-filter (comp not ~f) '~(list 'comp 'not f) ~pat))
+
 
 (comment
 
@@ -105,5 +123,8 @@
                    (a/cat (a/cat \x \x) \x)
                    (a/cat \x \x (a/cat \x)))
          "xxx")
+
+  (party (a/filter (constantly false) \x) "x")
+  (party (a/remove (constantly true) \x) "x")
 
 )

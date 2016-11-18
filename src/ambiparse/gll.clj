@@ -34,7 +34,7 @@
 (def trace false)
 (def ^:dynamic fuel
   "Steps to perform before giving up. Set to 0 to disable."
-  200)
+  300)
 
 (defmacro log [& xs]
   (require 'fipp.edn)
@@ -116,15 +116,17 @@
 
 (defn decorate
   "Applies a transformation to trees flowing along an edge."
-  [t {:as d :keys [prefix continue]}]
-  (if d
-    (merge prefix t
-           {::a/begin (::a/begin prefix)
-            ::a/end (::a/end t)
-            ::a/value (conj (::a/value prefix) (::a/value t))}
-           (when continue
-             {::a/continue continue}))
-    t))
+  [pat t {:as d :keys [prefix continue]}]
+  (assoc (if d
+           (merge prefix t
+                  {::a/begin (::a/begin prefix)
+                   ::a/end (::a/end t)
+                   ::a/children (conj (::a/children prefix) t)
+                   ::a/value (conj (::a/value prefix) (::a/value t))}
+                  (when continue
+                    {::a/continue continue}))
+           t)
+         ::a/pattern pat))
 
 (defn add-edge [i pat dst d]
   (let [k (add-node i pat)]
@@ -132,15 +134,15 @@
       (update! graph update-in (conj k :edges dst) conjs d)
       ;; Replay previously generated parses.
       (doseq [t (get-in graph (conj k :generated))]
-        (send [:pass dst (decorate t d)])))
+        (send [:pass dst (decorate pat t d)])))
     k))
 
-(defn pass [k t] ;XXX rename to "generate?" or "emit?"
+(defn pass [[_ pat :as k] t] ;XXX rename to "generate?" or "emit?"
   (when-not (get-in graph (conj k :generated t))
     (update! graph update-in (conj k :generated) conjs t)
     (doseq [[dst ds] (get-in graph (conj k :edges))
             d ds]
-      (send [:pass dst (decorate t d)]))))
+      (send [:pass dst (decorate pat t d)]))))
 
 (defn input-at [i]
   (if (< i (count input))
@@ -168,6 +170,8 @@
 
 
 ;;; Terminals.
+
+;;TODO: java.lang.String
 
 (defmethod init java.lang.Character [[i c :as k]]
   (let [x (input-at i)
@@ -285,7 +289,6 @@
   nil)
 
 
-
 ;;; Transformation.
 
 (defmethod init 'ambiparse/-rule [[i [_ pat f] :as k]]
@@ -346,6 +349,25 @@
 
 (defmethod -failure 'ambiparse/prefer [[i [_ _ pat]]]
   (failure [i pat]))
+
+
+;;; Filtering.
+
+(defmethod init 'ambiparse/filter [[i [_ _ _ pat] :as k]]
+  (add-edge i pat k nil))
+
+(defmethod passed 'ambiparse/filter [[i [_ f expr pat] :as k] t]
+  (when (f t)
+    (pass k t)))
+
+(defmethod -failure 'ambiparse/filter [[i [_ f expr pat] :as k]]
+  (if-let [rs (received k)]
+    {::a/message "Predicate failed"
+     ::a/predicate f
+     ::a/expression expr
+     ::a/pos (pos-at i)
+     ::a/candidates rs}
+    (failure [i pat])))
 
 
 ;;; Execution.

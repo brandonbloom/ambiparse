@@ -6,8 +6,10 @@
 
 (deftest parses-test
   (are [pat s ts] (= (set (a/parses pat s)) ts)
+
     \x "x" #{\x}
     \y "x" #{}
+
     (a/cat) "" #{[]}
     (a/cat) "x" #{}
     (a/cat \x) "x" #{[\x]}
@@ -15,32 +17,51 @@
     (a/cat \x \y) "x" #{}
     (a/cat \x \y) "xy" #{[\x \y]}
     (a/cat \x \y \z) "xyz" #{[\x \y \z]}
+
     (a/alt \x \y) "x" #{\x}
     (a/alt \x \y) "y" #{\y}
     (a/alt \x \y) "z" #{}
+
     (a/* \x) "" #{[]}
     (a/* \x) "x" #{[\x]}
     (a/* \x) "xx" #{[\x \x]}
+
     (a/+ \x) "" #{}
     (a/+ \x) "x" #{[\x]}
     (a/+ \x) "xx" #{[\x \x]}
+
     (a/? \x) "" #{[]}
     (a/? \x) "x" #{[\x]}
-    (a/cat (a/* \x) (a/? \x)) "xxx" #{[[\x \x \x] []] [[\x \x] [\x]]}
-    #'XS "xx" #{[\x \x]}
-    ))
 
-(deftest prefer-test
-  (are [pat s t] (= (a/parse! pat s) t)
-    (a/prefer (constantly 0) \x) "x" \x
-    (a/cat (a/greedy (a/* \x)) (a/? \x)) "xxx" [[\x \x \x] []]
-    ;;XXX test cycle
+    (a/cat (a/* \x) (a/? \x)) "xxx" #{[[\x \x \x] []] [[\x \x] [\x]]}
+
+    #'XS "xx" #{[\x \x]}
+
+    (a/prefer (constantly 0) \x) "x" #{\x}
+    (a/cat (a/greedy (a/* \x)) (a/? \x)) "xxx" #{[[\x \x \x] []]}
+    ;;XXX prefer test cycle
+
+    (a/cat (a/filter #(>= (a/length %) 2)
+                     (a/* \x))
+           (a/? \x))
+    "xxx"
+    #{[[\x \x] [\x]] [[\x \x \x] []]}
+
+    (a/cat (a/remove #(< (a/length %) 2)
+                     (a/* \x))
+           (a/? \x))
+    "xxx"
+    #{[[\x \x] [\x]] [[\x \x \x] []]}
+
+    (a/filter #(= (::a/value %) \x) \x) "x" #{\x}
+
     ))
 
 (defn clean-error [[t err]]
-  (if (contains? err ::a/exception)
-    [t (update err ::a/exception #(.getMessage %))]
-    [t err]))
+  [t (cond-> err
+       (contains? err ::a/exception) (update ::a/exception #(.getMessage %))
+       (contains? err ::a/predicate) (assoc ::a/predicate '...
+                                            ::a/candidates '#{...}))])
 
 (deftest errors-test
   (are [pat s err] (= (clean-error (a/parse pat s)) [nil err])
@@ -112,7 +133,29 @@
     {::a/expected \x ::a/actual \y
      ::a/pos {:idx 0 :line 1 :col 1}}
 
-    ;XXX Handle cyclic var.
+    ;XXX Check failure of cyclic prefer.
+
+    ;; Filter pattern failed.
+    (a/filter (constantly false) \x) "y"
+    {::a/expected \x
+     ::a/actual \y
+     ::a/pos {:idx 0 :line 1 :col 1}}
+
+    ;; Filter predicate failed.
+    (a/filter (constantly false) \x) "x"
+    {::a/message "Predicate failed"
+     ::a/predicate '...
+     ::a/expression '(constantly false)
+     ::a/candidates '#{...}
+     ::a/pos {:idx 0 :line 1 :col 1}}
+
+    ;; Remove predicate failed.
+    (a/remove (constantly true) \x) "x"
+    {::a/message "Predicate failed"
+     ::a/predicate '...
+     ::a/expression '(comp not (constantly true))
+     ::a/candidates '#{...}
+     ::a/pos {:idx 0 :line 1 :col 1}}
 
     ))
 
