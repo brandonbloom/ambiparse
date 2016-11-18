@@ -259,11 +259,27 @@
   (do-rep k t))
 
 (defmethod -failure 'ambiparse/* [k]
-  ;;XXX If at end of string, check rightmost+1 occurence of pattern.
+  ;;XXX If at end of string, get failure from rightmost+1 occurence of pattern.
   nil)
 
 (defmethod -failure 'ambiparse/+ [[i [_ pat]]]
   (failure [i pat]))
+
+
+;;; Optional.
+
+(defmethod init 'ambiparse/? [[i [_ pat] :as k]]
+  (let [t (empty-at i)]
+    (pass k t)
+    (add-edge i pat k {:prefix t})))
+
+(defmethod passed 'ambiparse/? [k t]
+  (pass k t))
+
+(defmethod -failure 'ambiparse/? [k]
+  ;;XXX If at end of string, get failure from pattern.
+  nil)
+
 
 
 ;;; Transformation.

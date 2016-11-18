@@ -14,6 +14,9 @@
 (defn + [pat]
   (list `+ pat))
 
+(defn ? [pat]
+  (list `? pat))
+
 (defn -rule [pat f]
   (list `-rule pat f))
 
@@ -68,6 +71,8 @@
   (party (+ \x) "")
   (party (+ \x) "x")
   (party (+ \x) "xx")
+  (party (? \x) "")
+  (party (? \x) "x")
   (party (rule \x [%]) "x")
   (party (label :lbl \x) "x")
 
