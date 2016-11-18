@@ -140,8 +140,9 @@
       (send [:pass dst (decorate t d)]))))
 
 (defn input-at [i]
-  (when (< i (count input))
-    (nth input i)))
+  (if (< i (count input))
+    (nth input i)
+    ::a/eof))
 
 
 ;;; Root.
