@@ -1,6 +1,7 @@
 (ns ambiparse
   (:refer-clojure :exclude [cat * +])
-  (:require [ambiparse.gll :as gll]))
+  (:require [ambiparse.gll :as gll]
+            [ambiparse.util :refer :all]))
 
 (defn cat [& pats]
   (list* `cat pats))
@@ -28,6 +29,12 @@
 (defn label [name pat]
   (list `label name pat))
 
+(defn prefer [cmp pat & pats]
+  (list `prefer cmp
+        (if (seq pats)
+          (apply alt pat pats)
+          pat)))
+
 (defn parses [pat s]
   (gll/with-run pat s
     (gll/parses)))
@@ -39,6 +46,15 @@
 (defn parse! [pat s]
   (gll/with-run pat s
     (gll/parse!)))
+
+(defn length [t]
+  (- (-> t ::end :idx) (-> t ::begin :idx)))
+
+(defn longest [pat]
+  (prefer (comparator-key length) pat))
+
+(defn greedy [pat]
+  (prefer (comparator-key count) pat))
 
 (comment
 
@@ -75,6 +91,9 @@
   (party (? \x) "x")
   (party (rule \x [%]) "x")
   (party (label :lbl \x) "x")
+  (party (prefer (constantly 0) \x) "x")
+  (party (cat (* \x) (? \x)) "xx")
+  (party (cat (greedy (* \x)) (? \x)) "xxxxx")
 
   (party \x "y")
   (party (cat \x \y) "zy")

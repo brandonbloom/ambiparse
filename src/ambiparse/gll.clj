@@ -24,6 +24,7 @@
 (def ^:dynamic input)
 (def ^:dynamic graph)
 (def ^:dynamic queue)
+(def ^:dynamic buffered)
 (def ^:dynamic root)
 (def ^{:dynamic true
        :doc "Vector mapping line minus one to index of previous newline."}
@@ -326,6 +327,30 @@
           (assoc ::a/var pat)))
 
 
+;;; Precedence.
+
+(defmethod init 'ambiparse/prefer [[i [_ cmp pat] :as k]]
+  (add-edge i pat k nil))
+
+(defmethod passed 'ambiparse/prefer [[i [_ cmp pat] :as k] t]
+  ;;XXX set exception if cmp fails.
+  (let [buffer (get-in graph (conj k :buffer))
+        buffer* (cond
+                  ;; First parse.
+                  (empty? buffer) #{t}
+                  ;; Strictly preferrable.
+                  (every? #(neg? (cmp % t)) buffer) #{t}
+                  ;; Not strictly less preferrable.
+                  ;;TODO: Compare in one pass over buffer.
+                  (some #(zero? (cmp % t)) buffer) (conjs buffer t))]
+    (when buffer*
+      (update! graph assoc-in (conj k :buffer) buffer*)
+      (update! buffered conj k))))
+
+(defmethod -failure 'ambiparse/prefer [[i [_ _ pat]]]
+  (failure [i pat]))
+
+
 ;;; Execution.
 
 (defn exec [[op & _ :as msg]]
@@ -341,12 +366,21 @@
 
 (defn pump []
   (log 'pump)
+  ;; Execute queued messages.
   (let [q queue]
     (set! queue [])
     (doseq [msg q]
       (when (zero? (update! fuel dec))
         (throw (Exception. "out of fuel!")))
-      (exec msg))))
+      (exec msg)))
+  ;; When subgraphs quiesce, flush buffers.
+  (when (empty? queue)
+    (log 'quiescence)
+    (when-let [q (seq buffered)]
+      (set! buffered #{})
+      (doseq [k q
+              t (get-in graph (conj k :buffer))]
+        (pass k t)))))
 
 (defn run []
   (apply add-node root)
@@ -363,6 +397,7 @@
             root [0 [:root pat]]
             graph []
             queue []
+            buffered #{}
             breaks (when (string? s) [])
             fuel fuel]
     (run)

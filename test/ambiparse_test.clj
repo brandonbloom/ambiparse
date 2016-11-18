@@ -26,7 +26,15 @@
     (a/+ \x) "xx" #{[\x \x]}
     (a/? \x) "" #{[]}
     (a/? \x) "x" #{[\x]}
+    (a/cat (a/* \x) (a/? \x)) "xxx" #{[[\x \x \x] []] [[\x \x] [\x]]}
     #'XS "xx" #{[\x \x]}
+    ))
+
+(deftest prefer-test
+  (are [pat s t] (= (a/parse! pat s) t)
+    (a/prefer (constantly 0) \x) "x" \x
+    (a/cat (a/greedy (a/* \x)) (a/? \x)) "xxx" [[\x \x \x] []]
+    ;;XXX test cycle
     ))
 
 (defn clean-error [[t err]]
@@ -90,6 +98,11 @@
     {::a/expected \x ::a/actual \y
      ::a/pos {:idx 0 :line 1 :col 1}
      ::a/var #'XS}
+
+    ;;XXX Prefer pattern failure.
+    ;;XXX Prefer compare failure.
+
+    ;XXX Handle cyclic var.
 
     ))
 
