@@ -26,8 +26,34 @@
 
 (deftest errors-test
   (are [pat s err] (= (a/parse pat s) [nil err])
-    \x "y" {::a/expected \x ::a/actual \y
-            ::a/pos {:idx 0 :line 1 :col 1}}
+
+    ;; Unexpected terminal.
+    \x "y"
+    {::a/expected \x ::a/actual \y
+     ::a/pos {:idx 0 :line 1 :col 1}}
+
+    ;; Failure in element of concatenation.
+    (a/cat \x \y) "zy"
+    {::a/expected \x ::a/actual \z
+     ::a/pos {:idx 0 :line 1 :col 1}}
+    (a/cat \x \y) "xz"
+    {::a/expected \y ::a/actual \z
+     ::a/pos {:idx 1 :line 1 :col 2}}
+
+    ;; Rightmost failure from alt.
+    (a/alt (a/cat \x \y) \z) "xo"
+    {::a/expected \y ::a/actual \o
+     ::a/pos {:idx 1 :line 1 :col 2}}
+
+    ;; Multiple rightmost failures.
+    (a/alt \x \y) "z"
+    {::a/alts #{{::a/expected \x ::a/actual \z
+                 ::a/pos {:idx 0 :line 1 :col 1}}
+                {::a/expected \y ::a/actual \z
+                 ::a/pos {:idx 0 :line 1 :col 1}}}}
+
+    ;XXX \x "xz" {:UNEXPECTED_EOF '?
+    ;XXX          ::a/pos {:idx 1 :line 1 :col 2}}
     ))
 
 (def Digit

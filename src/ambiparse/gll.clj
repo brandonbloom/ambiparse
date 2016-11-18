@@ -129,8 +129,7 @@
       (update! graph update-in (conj k :edges dst) conjs d)
       ;; Replay previously generated parses.
       (doseq [t (get-in graph (conj k :generated))]
-        (send [:pass dst (decorate t d)])
-        (update! graph update-in (conj k :received) conjs t)))
+        (send [:pass dst (decorate t d)])))
     k))
 
 (defn pass [k t] ;XXX rename to "generate?" or "emit?"
@@ -198,9 +197,12 @@
 (defmethod passed 'ambiparse/cat [k t]
   (do-cat (dissoc t ::a/continue) k (::a/continue t)))
 
+(defn rightmost [kw xs]
+  (when (seq xs)
+    (apply max-key #(-> % kw :idx) xs)))
+
 (defmethod -failure 'ambiparse/cat [[i [_ & pats] :as k]]
-  (if-let [t (when-let [rs (seq (received k))]
-               (apply max-key #(-> % ::a/end :idx) rs))]
+  (if-let [t (rightmost ::a/end (received k))]
     (if-let [cont (::a/continue t)]
       (failure [(-> t ::a/end :idx) (first cont)]))
     (when-first [p pats]
@@ -213,8 +215,13 @@
 (defmethod passed 'ambiparse/alt [k t]
   (pass k t))
 
-(defmethod -failure 'ambiparse/alt [k]
-  :todo-alt-failure) ;XXX
+(defmethod -failure 'ambiparse/alt [[i [_ & pats]]]
+  (let [errs (->> pats (map #(failure [i %])) (remove nil?))
+        pos (->> errs (rightmost ::a/pos) ::a/pos)
+        errs (filter #(= (::a/pos %) pos) errs)]
+    (cond
+      (next errs) {::a/alts (set errs)}
+      (seq errs) (first errs))))
 
 (defn do-rep [[_ [_ pat] :as k] t]
   (pass k t)
@@ -262,7 +269,8 @@
             (init k))
     :pass (let [[_ k t] msg]
             (when-not (get-in graph (conj k :received t))
-              (passed k t)))
+              (passed k t)
+              (update! graph update-in (conj k :received) conjs t)))
     ))
 
 (defn pump []
