@@ -106,17 +106,24 @@
 
 (declare Expr)
 
-(def Sum
-  (a/rule (a/cat (a/label :lhs #'Expr) Space \+ Space (a/label :rhs #'Expr))
-          (+ (:lhs %) (:rhs %))))
+(defn binop [c f]
+  (a/rule (a/cat (a/label :lhs #'Expr) Space c Space (a/label :rhs #'Expr))
+          (f (:lhs %) (:rhs %))))
+
+(def Sum (binop \+ +))
+(def Pow (binop \^ #(Math/pow %1 %2)))
 
 (def Expr
   (a/alt Num
-         Sum))
+         Sum
+         Pow))
 
 (deftest calc-test
-  (are [s n] (= (a/parse! Expr s) n)
+  (are [s n] (== (a/parse! Expr s) n)
     "5" 5
     "15" 15
     "2 + 3" 5
-    "2 + 3 + 1" 6))
+    "2 + 3 + 1" 6
+    "2 ^ 3" 8
+    ;TODO: "2 ^ 3 ^ 2" 512
+    ))
