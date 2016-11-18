@@ -139,6 +139,13 @@
             d ds]
       (send [:pass dst (decorate t d)]))))
 
+(defn input-at [i]
+  (when (< i (count input))
+    (nth input i)))
+
+
+;;; Root.
+
 (defmethod init :root [[i [_ pat] :as k]]
   (add-edge i pat k nil))
 
@@ -155,9 +162,8 @@
 (defmethod -failure :root [[i [_ pat]]]
   (failure [i pat]))
 
-(defn input-at [i]
-  (when (< i (count input))
-    (nth input i)))
+
+;;; Terminals.
 
 (defmethod init java.lang.Character [[i c :as k]]
   (let [x (input-at i)
@@ -184,6 +190,9 @@
      ::a/end p
      ::a/value []}))
 
+
+;;; Concatenation.
+
 (defn do-cat [t k pats]
   (if-let [[p & ps] pats]
     (let [i (-> t ::a/end :idx)
@@ -201,12 +210,18 @@
   (when (seq xs)
     (apply max-key #(-> % kw :idx) xs)))
 
+(defn rightmost-received [k]
+  (rightmost ::a/end (received k)))
+
 (defmethod -failure 'ambiparse/cat [[i [_ & pats] :as k]]
-  (if-let [t (rightmost ::a/end (received k))]
+  (if-let [t (rightmost-received k)]
     (if-let [cont (::a/continue t)]
       (failure [(-> t ::a/end :idx) (first cont)]))
     (when-first [p pats]
       (failure [i p]))))
+
+
+;;; Alternation.
 
 (defmethod init 'ambiparse/alt [[i [_ & pats] :as k]]
   (doseq [pat pats]
@@ -223,6 +238,9 @@
       (next errs) {::a/alts (set errs)}
       (seq errs) (first errs))))
 
+
+;;; Repetition.
+
 (defn do-rep [[_ [_ pat] :as k] t]
   (pass k t)
   (let [i (-> t ::a/end :idx)]
@@ -234,20 +252,38 @@
 (defmethod init 'ambiparse/+ [[i [_ pat] :as k]]
   (add-edge i pat k {:prefix (empty-at i)}))
 
-(defmethod -failure 'ambiparse/+ [k]
-  :todo-plus-failure) ;XXX
-
 (defmethod passed 'ambiparse/* [k t]
   (do-rep k t))
 
 (defmethod passed 'ambiparse/+ [k t]
   (do-rep k t))
 
+(defmethod -failure 'ambiparse/* [k]
+  ;;XXX If at end of string, check rightmost+1 occurence of pattern.
+  nil)
+
+(defmethod -failure 'ambiparse/+ [[i [_ pat]]]
+  (failure [i pat]))
+
+
+;;; Transformation.
+
 (defmethod init 'ambiparse/-rule [[i [_ pat f] :as k]]
   (add-edge i pat k nil))
 
 (defmethod passed 'ambiparse/-rule [[i [_ pat f] :as k] t]
-  (pass k (f t)))
+  (let [[t* ex] (try [(f t) nil] (catch Exception ex [nil ex]))]
+    (if ex
+      (update! graph assoc-in (conj k :exception) ex)
+      (pass k (f t)))))
+
+(defmethod -failure 'ambiparse/-rule [[i [_ pat] :as k]]
+  (if-let [ex (get-in graph (conj k :exception))]
+    {::a/exception ex ::a/pos (pos-at i)}
+    (failure [i pat])))
+
+
+;;; Labeling.
 
 (defmethod init 'ambiparse/label [[i [_ name pat] :as k]]
   (add-edge i pat k nil))
@@ -256,11 +292,24 @@
   (let [t* (select-keys t [::a/begin ::a/end ::a/value])] ; Strip labels.
     (pass k (assoc t* name (::a/value t)))))
 
+(defmethod -failure 'ambiparse/label [[i [_ _ pat]]]
+  (failure [i pat]))
+
+
+;;; Indirection.
+
 (defmethod init clojure.lang.Var [[i pat :as k]]
   (add-edge i @pat k nil))
 
 (defmethod passed clojure.lang.Var [[i pat :as k] t]
   (pass k (assoc t ::a/var pat)))
+
+(defmethod -failure clojure.lang.Var [[i pat]]
+  (some-> (failure [i @pat])
+          (assoc ::a/var pat)))
+
+
+;;; Execution.
 
 (defn exec [[op & _ :as msg]]
   (log 'exec msg)

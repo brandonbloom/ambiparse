@@ -2,6 +2,8 @@
   (:require [clojure.test :refer :all]
             [ambiparse :as a]))
 
+(def XS (a/+ \x))
+
 (deftest parses-test
   (are [pat s ts] (= (set (a/parses pat s)) ts)
     \x "x" #{\x}
@@ -22,15 +24,24 @@
     (a/+ \x) "" #{}
     (a/+ \x) "x" #{[\x]}
     (a/+ \x) "xx" #{[\x \x]}
+    #'XS "xx" #{[\x \x]}
     ))
 
+(defn clean-error [[t err]]
+  (if (contains? err ::a/exception)
+    [t (update err ::a/exception #(.getMessage %))]
+    [t err]))
+
 (deftest errors-test
-  (are [pat s err] (= (a/parse pat s) [nil err])
+  (are [pat s err] (= (clean-error (a/parse pat s)) [nil err])
 
     ;; Unexpected terminal.
     \x "y"
     {::a/expected \x ::a/actual \y
      ::a/pos {:idx 0 :line 1 :col 1}}
+
+    ;XXX \x "xz" {:UNEXPECTED_EOF '?
+    ;XXX          ::a/pos {:idx 1 :line 1 :col 2}}
 
     ;; Failure in element of concatenation.
     (a/cat \x \y) "zy"
@@ -52,8 +63,32 @@
                 {::a/expected \y ::a/actual \z
                  ::a/pos {:idx 0 :line 1 :col 1}}}}
 
-    ;XXX \x "xz" {:UNEXPECTED_EOF '?
-    ;XXX          ::a/pos {:idx 1 :line 1 :col 2}}
+    ;; Rep failure.
+    (a/+ \x) "y"
+    {::a/expected \x ::a/actual \y
+     ::a/pos {:idx 0 :line 1 :col 1}}
+
+    ;; Rule pattern failure.
+    (a/rule \x \z) "y"
+    {::a/expected \x ::a/actual \y
+     ::a/pos {:idx 0 :line 1 :col 1}}
+
+    ;; Rule expression failure.
+    (a/rule \x (/ 1 0)) "x"
+    {::a/exception "Divide by zero"
+     ::a/pos {:idx 0 :line 1 :col 1}}
+
+    ;; Label pattern failure.
+    (a/label :foo (a/+ \x)) "y"
+    {::a/expected \x ::a/actual \y
+     ::a/pos {:idx 0 :line 1 :col 1}}
+
+    ;; Var pattern failure.
+    #'XS "y"
+    {::a/expected \x ::a/actual \y
+     ::a/pos {:idx 0 :line 1 :col 1}
+     ::a/var #'XS}
+
     ))
 
 (def Digit
