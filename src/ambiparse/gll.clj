@@ -38,7 +38,7 @@
 (defmacro log [& xs]
   (require 'fipp.edn)
   (when trace
-    `(fipp.edn/pprint (list ~@xs))))
+    `(fipp.edn/pprint (list ~@xs) {:width 200})))
 
 (defn state []
   {:input input
@@ -50,7 +50,7 @@
   (if breaks
     ;;TODO: Binary search?
     (reduce-kv (fn [res r b]
-                 (if (< i b)
+                 (if (<= i b)
                    (reduced res)
                    {:idx i :row (inc r) :col (- i b -1)}))
                {:idx i :row 1 :col (inc i)}
@@ -263,11 +263,12 @@
   (pass k (assoc t ::a/var pat)))
 
 (defn exec [[op & _ :as msg]]
-  (log (list 'exec msg))
+  (log 'exec msg)
   (case op
     :init (let [[_ k] msg]
             (init k))
     :link (let [[_ src dst d] msg]
+            ;; Replay previously generated parses.
             (doseq [t (get-in graph (conj src :generated))]
               (send [:pass dst (decorate t d)])))
     :pass (let [[_ k t] msg]
@@ -278,13 +279,15 @@
   (log 'pump)
   (let [q queue]
     (set! queue [])
+    (doseq [msg q]
+      (when (zero? (update! fuel dec))
+        (throw (Exception. "out of fuel!")))
+      (exec msg))
     (run! exec q)))
 
 (defn run []
   (apply add-node root)
   (while (seq queue)
-    (when (zero? (update! fuel dec))
-      (throw (Exception. "out of fuel!")))
     (pump))
   (log 'final-state= (state)))
 

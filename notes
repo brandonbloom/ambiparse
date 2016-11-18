@@ -11,3 +11,6 @@ TODO: Consider cut operator. See:
  Packrat Parsers Can Handle Practical Grammars in Mostly Constant Space
  "Tell" version of errors - can "commit" or "abort" current node.
 
+
+
+BUG: no error for extra stuff at end of input

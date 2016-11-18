@@ -40,7 +40,8 @@
     (gll/with-run pat s
       (fipp.edn/pprint {:parses (gll/parses)
                         ;:generated (gll/generated gll/root)
-                        :failure (gll/failure)})))
+                        :failure (gll/failure)}
+                       {:width 200})))
 
   (party \x "x")
   (party (cat) "")
