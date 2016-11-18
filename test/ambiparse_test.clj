@@ -99,8 +99,18 @@
      ::a/pos {:idx 0 :line 1 :col 1}
      ::a/var #'XS}
 
-    ;;XXX Prefer pattern failure.
-    ;;XXX Prefer compare failure.
+    ;; Prefer compare failure.
+    (a/prefer (fn [t u] (throw (Exception. "whoops")))
+              (a/cat (a/cat \x \x) \x)
+              (a/cat \x \x (a/cat \x)))
+    "xxx"
+    {::a/exception "whoops"
+     ::a/pos {:idx 0 :line 1 :col 1}}
+
+    ;; Prefer pattern failure.
+    (a/greedy (a/+ \x)) "y"
+    {::a/expected \x ::a/actual \y
+     ::a/pos {:idx 0 :line 1 :col 1}}
 
     ;XXX Handle cyclic var.
 

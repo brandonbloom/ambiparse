@@ -89,11 +89,13 @@
 (defn failure
   ([] (-failure root))
   ([[i & _ :as k]]
-   (cond
-     (generated k) nil
-     (< (count input) i) {::a/pos (pos-at i)
-                          ::a/message "Unexpected end of input"}
-     :else (-failure k))))
+   (if-let [ex (get-in graph (conj k :exception))]
+     {::a/exception ex ::a/pos (pos-at i)}
+     (cond
+       (generated k) nil
+       (< (count input) i) {::a/pos (pos-at i)
+                            ::a/message "Unexpected end of input"}
+       :else (-failure k)))))
 
 (defn received [k]
   (get-in graph (conj k :received)))
@@ -290,15 +292,10 @@
   (add-edge i pat k nil))
 
 (defmethod passed 'ambiparse/-rule [[i [_ pat f] :as k] t]
-  (let [[t* ex] (try [(f t) nil] (catch Exception ex [nil ex]))]
-    (if ex
-      (update! graph assoc-in (conj k :exception) ex)
-      (pass k (f t)))))
+  (pass k (f t)))
 
 (defmethod -failure 'ambiparse/-rule [[i [_ pat] :as k]]
-  (if-let [ex (get-in graph (conj k :exception))]
-    {::a/exception ex ::a/pos (pos-at i)}
-    (failure [i pat])))
+  (failure [i pat]))
 
 
 ;;; Labeling.
@@ -353,16 +350,17 @@
 
 ;;; Execution.
 
-(defn exec [[op & _ :as msg]]
+(defn exec [[op k & args :as msg]]
   (log 'exec msg)
-  (case op
-    :init (let [[_ k] msg]
-            (init k))
-    :pass (let [[_ k t] msg]
-            (when-not (get-in graph (conj k :received t))
-              (passed k t)
-              (update! graph update-in (conj k :received) conjs t)))
-    ))
+  (try
+    (case op
+      :init (init k)
+      :pass (let [[t] args]
+              (when-not (get-in graph (conj k :received t))
+                (passed k t)
+                (update! graph update-in (conj k :received) conjs t))))
+    (catch Exception ex
+      (update! graph update-in (conj k :exception) #(or % ex)))))
 
 (defn pump []
   (log 'pump)
@@ -379,6 +377,7 @@
     (when-let [q (seq buffered)]
       (set! buffered #{})
       (doseq [k q
+              :when (not (get-in graph (conj k :exception)))
               t (get-in graph (conj k :buffer))]
         (pass k t)))))
 
