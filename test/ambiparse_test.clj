@@ -25,7 +25,10 @@
     ))
 
 (deftest errors-test
-  )
+  (are [pat s err] (= (a/parse pat s) [nil err])
+    \x "y" {::a/expected \x ::a/actual \y
+            ::a/pos {:idx 0 :line 1 :col 1}}
+    ))
 
 (def Digit
   (a/rule (apply a/alt (map #(char (+ (int \0) %)) (range 10)))
@@ -51,7 +54,7 @@
          Sum))
 
 (deftest calc-test
-  (are [s n] (= (a/parse Expr s) n)
+  (are [s n] (= (a/parse! Expr s) n)
     "5" 5
     "15" 15
     "2 + 3" 5

@@ -26,7 +26,7 @@
 (def ^:dynamic queue)
 (def ^:dynamic root)
 (def ^{:dynamic true
-       :doc "Vector mapping row index minus one to index of previous newline."}
+       :doc "Vector mapping line minus one to index of previous newline."}
   breaks)
 
 ;;; Debug state.
@@ -49,11 +49,11 @@
 (defn pos-at [i]
   (if breaks
     ;;TODO: Binary search?
-    (reduce-kv (fn [res r b]
+    (reduce-kv (fn [res n b]
                  (if (<= i b)
                    (reduced res)
-                   {:idx i :row (inc r) :col (- i b -1)}))
-               {:idx i :row 1 :col (inc i)}
+                   {:idx i :line (inc n) :col (- i b -1)}))
+               {:idx i :line 1 :col (inc i)}
                breaks)
     {:idx i}))
 
@@ -90,8 +90,8 @@
   ([[i & _ :as k]]
    (cond
      (generated k) nil
-     (< (count input) i) {::pos (pos-at i)
-                          ::message "Unexpected end of input"}
+     (< (count input) i) {::a/pos (pos-at i)
+                          ::a/message "Unexpected end of input"}
      :else (-failure k))))
 
 (defn received [k]
@@ -156,14 +156,6 @@
 (defmethod -failure :root [[i [_ pat]]]
   (failure [i pat]))
 
-;;XXX use me, add line/col wherever begin/env/idx occur.
-;;^^^ Idea: Vector of pairs [idx row] for fast row lookup + col calculation.
-(defn advance [pos c]
-  (update (if (= c \newline)
-            (-> c (update :line inc) (assoc :col 1))
-            (-> c (update :col inc)))
-          :idx inc))
-
 (defn input-at [i]
   (when (< i (count input))
     (nth input i)))
@@ -183,9 +175,9 @@
 (defmethod -failure java.lang.Character [[i c]]
   (let [x (input-at i)]
     (when (not= x c)
-      {::pos (pos-at i)
-       ::expected c
-       ::actual x})))
+      {::a/pos (pos-at i)
+       ::a/expected c
+       ::a/actual x})))
 
 (defn empty-at [i]
   (let [p (pos-at i)]
@@ -311,10 +303,16 @@
 
 (defn parse []
   (let [ps (distinct (parses))]
-    (cond
-      (next ps) (throw (ex-info "Ambiguous parse:" {::a/parses (take 2 ps)}))
-      (seq ps) (first ps)
-      :else (throw (ex-info "Parse failed" (failure root))))))
+    (if (seq ps)
+      [(first ps) (when (next ps)
+                    {::a/message "Ambiguous" ::a/parses (take 2 ps)})]
+      [nil (failure root)])))
+
+(defn parse! []
+  (let [[p err] (parse)]
+    (when err
+      (throw (ex-info "Parse failed" err)))
+    p))
 
 (comment
 

@@ -33,6 +33,10 @@
   (gll/with-run pat s
     (gll/parse)))
 
+(defn parse! [pat s]
+  (gll/with-run pat s
+    (gll/parse!)))
+
 (comment
 
   (require 'fipp.edn)
