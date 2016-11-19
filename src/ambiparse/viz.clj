@@ -36,4 +36,4 @@
                [src-id dst-id {:label (edge-label decorator)}])))))
 
 (defn show! [g]
-  (-> g to-dorothy d/digraph d/dot (doto println) d/show!))
+  (-> g to-dorothy d/digraph d/dot d/show!))

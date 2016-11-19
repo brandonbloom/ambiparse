@@ -108,12 +108,17 @@
   (party (a/+ \x) "xx")
   (party (a/? \x) "")
   (party (a/? \x) "x")
+  (party (a/rule \x 1) "x")
   (party (a/rule \x [%]) "x")
   (party (a/rule \x (/ 1 0)) "x")
   (party (a/label :lbl \x) "x")
+  (party (a/label :a (a/label :b \x)) "x")
   (party (a/prefer (constantly 0) \x) "x")
   (party (a/cat (a/* \x) (a/? \x)) "xx")
   (party (a/cat (a/greedy (a/* \x)) (a/? \x)) "xxxxx")
+
+  (def A (a/alt \a (a/cat \a #'A)))
+  (party A "aaaa")
 
   (party \x "y")
   (party (a/cat \x \y) "zy")

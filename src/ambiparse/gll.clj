@@ -117,16 +117,15 @@
 (defn decorate
   "Applies a transformation to trees flowing along an edge."
   [pat t {:as d :keys [prefix continue]}]
-  (assoc (if d
-           (merge prefix t
-                  {::a/begin (::a/begin prefix)
-                   ::a/end (::a/end t)
-                   ::a/children (conj (::a/children prefix) t)
-                   ::a/value (conj (::a/value prefix) (::a/value t))}
-                  (when continue
-                    {::a/continue continue}))
-           t)
-         ::a/pattern pat))
+  (if d
+    (merge prefix t
+           {::a/begin (::a/begin prefix)
+            ::a/end (::a/end t)
+            ::a/children (conj (::a/children prefix) t)
+            ::a/value (conj (::a/value prefix) (::a/value t))}
+           (when continue
+             {::a/continue continue}))
+    t))
 
 (defn add-edge [i pat dst d]
   (let [k (add-node i pat)]
@@ -138,11 +137,15 @@
     k))
 
 (defn pass [[_ pat :as k] t] ;XXX rename to "generate?" or "emit?"
-  (when-not (get-in graph (conj k :generated t))
-    (update! graph update-in (conj k :generated) conjs t)
-    (doseq [[dst ds] (get-in graph (conj k :edges))
-            d ds]
-      (send [:pass dst (decorate pat t d)]))))
+  (let [t (assoc t ::a/pattern pat)]
+    (when-not (get-in graph (conj k :generated t))
+      (update! graph update-in (conj k :generated) conjs t)
+      (doseq [[dst ds] (get-in graph (conj k :edges))
+              d ds]
+        (send [:pass dst (decorate pat t d)])))))
+
+(defn pass-child [k t]
+  (pass k (assoc t ::a/children [t])))
 
 (defn input-at [i]
   (if (< i (count input))
@@ -163,7 +166,7 @@
   (log 'parsed? t)
   (when (= (-> t ::a/end :idx) (count input))
     (log 'parsed! t)
-    (pass k t)))
+    (pass-child k t)))
 
 (defmethod -failure :root [[i [_ pat]]]
   (failure [i pat]))
@@ -196,6 +199,7 @@
   (let [p (pos-at i)]
     {::a/begin p
      ::a/end p
+     ::a/children []
      ::a/value []}))
 
 
@@ -236,7 +240,7 @@
     (add-edge i pat k nil)))
 
 (defmethod passed 'ambiparse/alt [k t]
-  (pass k t))
+  (pass-child k t))
 
 (defmethod -failure 'ambiparse/alt [[i [_ & pats]]]
   (let [errs (->> pats (map #(failure [i %])) (remove nil?))
@@ -295,7 +299,7 @@
   (add-edge i pat k nil))
 
 (defmethod passed 'ambiparse/-rule [[i [_ pat f] :as k] t]
-  (pass k (f t)))
+  (pass-child k (f t)))
 
 (defmethod -failure 'ambiparse/-rule [[i [_ pat] :as k]]
   (failure [i pat]))
@@ -306,9 +310,11 @@
 (defmethod init 'ambiparse/label [[i [_ name pat] :as k]]
   (add-edge i pat k nil))
 
+(defn strip-labels [t]
+  (->> t (filter (fn [[k v]] (= (namespace k) "ambiparse"))) (into {})))
+
 (defmethod passed 'ambiparse/label [[i [_ name pat] :as k] t]
-  (let [t* (select-keys t [::a/begin ::a/end ::a/value])] ; Strip labels.
-    (pass k (assoc t* name (::a/value t)))))
+  (pass-child k (assoc (strip-labels t) name (::a/value t))))
 
 (defmethod -failure 'ambiparse/label [[i [_ _ pat]]]
   (failure [i pat]))
@@ -320,7 +326,7 @@
   (add-edge i @pat k nil))
 
 (defmethod passed clojure.lang.Var [[i pat :as k] t]
-  (pass k (assoc t ::a/var pat)))
+  (pass-child k (assoc t ::a/var pat)))
 
 (defmethod -failure clojure.lang.Var [[i pat]]
   (some-> (failure [i @pat])
@@ -352,13 +358,14 @@
 
 
 ;;; Filtering.
+;;TODO: remove seems more common - better primative?
 
 (defmethod init 'ambiparse/filter [[i [_ _ _ pat] :as k]]
   (add-edge i pat k nil))
 
 (defmethod passed 'ambiparse/filter [[i [_ f expr pat] :as k] t]
   (when (f t)
-    (pass k t)))
+    (pass-child k t)))
 
 (defmethod -failure 'ambiparse/filter [[i [_ f expr pat] :as k]]
   (if-let [rs (received k)]
@@ -401,7 +408,9 @@
       (doseq [k q
               :when (not (get-in graph (conj k :exception)))
               t (get-in graph (conj k :buffer))]
-        (pass k t)))))
+        (pass-child k t)
+        ;;XXX clear the buffer!
+        ))))
 
 (defn run []
   (apply add-node root)
