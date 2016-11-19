@@ -122,7 +122,8 @@
            {::a/begin (::a/begin prefix)
             ::a/end (::a/end t)
             ::a/children (conj (::a/children prefix) t)
-            ::a/value (conj (::a/value prefix) (::a/value t))}
+            ::a/value (conj (::a/value prefix) (::a/value t))
+            ::a/elements (conj (::a/elements prefix) t)}
            (when continue
              {::a/continue continue}))
     t))
@@ -200,6 +201,7 @@
     {::a/begin p
      ::a/end p
      ::a/children []
+     ::a/elements []
      ::a/value []}))
 
 
@@ -210,7 +212,7 @@
     (let [i (-> t ::a/end :idx)
           d {:prefix t :continue ps}]
       (add-edge i p k d))
-    (pass k t)))
+    (pass k (assoc t ::a/structure (second k)))))
 
 (defmethod init 'ambiparse/cat [[i [_ & pats] :as k]]
   (do-cat (empty-at i) k pats))
@@ -389,6 +391,7 @@
                 (passed k t)
                 (update! graph update-in (conj k :received) conjs t))))
     (catch Exception ex
+      (log 'catch-at k ex)
       (update! graph update-in (conj k :exception) #(or % ex)))))
 
 (defn pump []
@@ -436,9 +439,11 @@
 (defmacro with-run [pat s & body]
   `(with-run-fn ~pat ~s (fn [] ~@body)))
 
-(defn parses
-  ([] (parses root))
-  ([k] (->> k generated (map ::a/value))))
+(defn trees []
+  (generated root))
+
+(defn parses []
+  (map ::a/value (trees)))
 
 (defn parse []
   (let [ps (distinct (parses))]

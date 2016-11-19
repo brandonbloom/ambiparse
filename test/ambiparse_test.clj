@@ -179,7 +179,7 @@
           (f (:lhs %) (:rhs %))))
 
 (def Sum (binop \+ +))
-(def Pow (binop \^ #(Math/pow %1 %2)))
+(def Pow (a/right (binop \^ #(Math/pow %1 %2))))
 
 (def Expr
   (a/alt Num
@@ -193,5 +193,5 @@
     "2 + 3" 5
     "2 + 3 + 1" 6
     "2 ^ 3" 8
-    ;TODO: "2 ^ 3 ^ 2" 512
+    "2 ^ 3 ^ 2" 512
     ))

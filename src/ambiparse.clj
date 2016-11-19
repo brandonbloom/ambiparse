@@ -73,6 +73,20 @@
 (defmacro remove [f pat]
   `(-filter (comp not ~f) '~(list 'comp 'not f) ~pat))
 
+(defn nested-at? [f t]
+  (= (-> t ::elements f ::structure) (::structure t)))
+
+(defn nested-left? [t]
+  (nested-at? first t))
+
+(defn nested-right? [t]
+  (nested-at? peek t))
+
+(defn left [pat]
+  (remove nested-right? pat))
+
+(defn right [pat]
+  (remove nested-left? pat))
 
 (comment
 
@@ -100,6 +114,7 @@
   (party (a/alt \x \y) "y")
   (party (a/alt \x \y) "z")
   (party (a/alt (a/cat \x \y) \z) "xo")
+  (party (a/cat (a/alt \a (a/cat (a/alt \b \x)))) "x")
   (party (a/* \x) "")
   (party (a/* \x) "x")
   (party (a/* \x) "xx")
@@ -129,7 +144,14 @@
                    (a/cat \x \x (a/cat \x)))
          "xxx")
 
+  (party (a/filter (constantly true) \x) "x")
   (party (a/filter (constantly false) \x) "x")
   (party (a/remove (constantly true) \x) "x")
+  (party (a/remove (constantly false) \x) "x")
+
+  (def X (a/alt \x (a/cat) (a/cat #'X #'X)))
+  (party X "xxx") ;XXX infinite loop on epsilon!
+  (party (a/right (a/cat X X)) "xxx")
+  (party (a/left (a/cat X X)) "xxx")
 
 )
