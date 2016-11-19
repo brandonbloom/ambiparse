@@ -88,16 +88,20 @@
 (defn right [pat]
   (remove nested-left? pat))
 
+(defn flat [pat]
+  (remove nested? pat))
+
+
 (comment
 
   (require 'fipp.edn)
   (alias 'a 'ambiparse)
   (defn party [pat s]
     (gll/with-run pat s
-      (fipp.edn/pprint {:parses (gll/parses)
-                        ;:generated (gll/generated gll/root)
+      (fipp.edn/pprint {:trees (gll/trees)
+                        :parses (gll/parses)
                         :failure (gll/failure)}
-                       {:width 200})))
+                       {:width 160})))
 
   (party \x "x")
   (party (a/cat) "")
