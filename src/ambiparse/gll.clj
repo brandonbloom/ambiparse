@@ -59,10 +59,9 @@
     {:idx i}))
 
 (defn classify [x]
-  (cond
-    (sequential? x) (first x)
-    (keyword? x) x
-    :else (class x)))
+  (if (sequential? x)
+    (first x)
+    (class x)))
 
 (defn dispatch [[i x]]
   (classify x))
