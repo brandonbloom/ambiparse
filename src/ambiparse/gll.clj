@@ -456,11 +456,3 @@
     (when err
       (throw (ex-info "Parse failed" err)))
     p))
-
-(comment
-
-  (binding [breaks [0 3 7]]
-    (doseq [i (range 9)]
-      (prn i (pos-at i))))
-
-)
