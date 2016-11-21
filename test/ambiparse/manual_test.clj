@@ -4,10 +4,10 @@
             [ambiparse.gll :as gll]))
 
 (defn party [pat s]
-  (gll/with-run pat s
-    (pprint {:trees (gll/trees)
-             :parses (gll/parses)
-             :failure (gll/failure)}
+  (let [vm (gll/run pat s)]
+    (pprint {:trees (gll/trees vm)
+             :parses (gll/parses vm)
+             :failure (gll/failure vm)}
             {:width 160})))
 
 (comment

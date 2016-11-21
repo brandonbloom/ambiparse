@@ -1,7 +1,9 @@
 (ns ambiparse.gll
   (:refer-clojure :exclude [send])
   (:require [clojure.spec :as s]
-            [ambiparse.util :refer :all]))
+            [ambiparse.util :refer :all])
+  (:import (java.util ArrayList HashSet)
+           (ambiparse Machine)))
 
 (create-ns 'ambiparse)
 (alias 'a 'ambiparse)
@@ -19,38 +21,20 @@
 ;;;   dst = destination key of edge
 ;;;   d = decorator attached to edges
 
-;;TODO: Combine in to single state record? Benchmark.
-
-;;; Essential state.
-(def ^:dynamic input)
-(def ^:dynamic graph)
-(def ^:dynamic queue)
-(def ^:dynamic buffered)
-(def ^:dynamic root)
-(def ^{:dynamic true
-       :doc "Vector mapping line minus one to index of previous newline."}
-  breaks)
-(def ^{:dynamic true
-       :doc "Furthest index into the input examined."}
-  traveled)
-
-;;; Debug state.
 (def trace false)
-(def ^:dynamic fuel
-  "Steps to perform before giving up. Set to 0 to disable."
-  0)
+;(def trace true)
 
 (defmacro log [& xs]
   (require 'fipp.edn)
   (when trace
     `(fipp.edn/pprint (list ~@xs) {:width 200})))
 
-(defn state []
-  {:input input
-   :graph graph
-   :root root
-   :queue queue
-   :fuel fuel})
+;XXX (defn snapshot [^VM vm]
+;XXX   {:input (.input vm)
+;XXX    :root (.root vm)
+;XXX    :graph (.graph vm)
+;XXX    :queue (.queue vm)
+;XXX    :fuel (.fuel vm)})
 
 ;;TODO: Better specs.
 (s/def ::pattern any?)
@@ -58,31 +42,31 @@
 
 (s/def ::key (s/spec (s/cat :i integer?, :pat ::pattern, :tail? boolean?)))
 
-(defn scan-breaks [i]
-  (when (< traveled i)
-    (doseq [n (range traveled (min (inc i) (dec (count input))))]
-      (when (and (= (nth input i) \newline)
-                 breaks
-                 (< (peek breaks) n))
-        (update! breaks conj n)))
-    (set! traveled i)))
+(defn scan-breaks [^Machine vm i]
+  (when (< (.traveled vm) i)
+    (doseq [n (range (.traveled vm) (min (inc i) (dec (count (.input vm)))))]
+      (when (and (= (nth (.input vm) i) \newline)
+                 (.breaks vm)
+                 (< (peek @(.breaks vm)) n))
+        (vswap! (.breaks vm) conj n)))
+    (set! (.traveled vm) i)))
 
-(defn input-at [i]
-  (if (< i (count input))
-    (do (scan-breaks i)
-        (nth input i))
+(defn input-at [^Machine vm i]
+  (if (< i (count (.input vm)))
+    (do (scan-breaks vm i)
+        (nth (.input vm) i))
     ::a/eof))
 
-(defn pos-at [i]
-  (scan-breaks i)
-  (if breaks
+(defn pos-at [^Machine vm i]
+  (scan-breaks vm i)
+  (if (.breaks vm)
     ;;TODO: Binary search?
     (reduce-kv (fn [res n b]
                  (if (<= i b)
                    (reduced res)
                    {:idx i :line (inc n) :col (- i b -1)}))
                {:idx i :line 1 :col (inc i)}
-               breaks)
+               @(.breaks vm))
     {:idx i}))
 
 (defn classify [pat]
@@ -99,53 +83,54 @@
 
 (defmulti init
   "Called when a parse node for a given key is first created."
-  dispatch)
+  (fn [^Machine vm k] (dispatch k)))
 
 (defmulti passed
   "Tells k about a successful sub-parse."
-  (fn [k t] (dispatch k)))
+  (fn [^Machine vm k t] (dispatch k)))
 
 (defmulti -failure
   "Asks k for a failure."
-  dispatch)
-
-(defn generated [k]
-  (get-in graph (conj k :generated)))
+  (fn [^Machine vm k] (dispatch k)))
 
 (def ^:dynamic inside)
 
-(s/fdef failure :args (s/alt :root (s/cat) :specific (s/cat :k ::key)))
+(defn machine? [x]
+  (instance? Machine x))
+
+(s/fdef failure
+  :args (s/alt :vm machine? :root (s/cat) :specific (s/cat :k ::key)))
 
 (defn failure
-  ([]
+  ([^Machine vm]
    (binding [inside #{}]
-     (failure root)))
-  ([[i _ _ :as k]]
+     (failure vm (.root vm))))
+  ([^Machine vm [i _ _ :as k]]
    (when-not (inside k)
      (binding [inside (conj inside k)]
-       (if-let [ex (get-in graph (conj k :exception))]
-         {::a/exception ex ::a/pos (pos-at i)}
-         (-failure k))))))
+       (if-let [ex (get-in @(.graph vm) (conj k :exception))]
+         {::a/exception ex ::a/pos (pos-at vm i)}
+         (-failure vm k))))))
 
-(defn received [k]
-  (get-in graph (conj k :received)))
+(defn received [^Machine vm k]
+  (get-in @(.graph vm) (conj k :received)))
 
 (def conjs (fnil conj #{}))
 
-(defn send [msg]
+(defn send [^Machine vm msg]
   ;(log 'send msg)
-  (update! queue conj msg)
+  (vswap! (.queue vm) conj msg)
   nil)
 
 (s/fdef add-node
   :args (s/cat :i integer?, :pat ::pattern, :tail? boolean?)
   :ret ::key)
 
-(defn add-node [i pat tail?]
+(defn add-node [^Machine vm i pat tail?]
   (let [k [i pat tail?]]
-    (when-not (get-in graph k)
-      (update! graph assoc-in k {:tail? tail?})
-      (send [:init k]))
+    (when-not (get-in @(.graph vm) k)
+      (vswap! (.graph vm) assoc-in k {})
+      (send vm [:init k]))
     k))
 
 (s/def ::prefix ::tree)
@@ -170,40 +155,41 @@
     t))
 
 (s/fdef add-edge
-  :args (s/cat :i integer?
+  :args (s/cat :vm machine?
+               :i integer?
                :pat any?
                :tail? boolean?
                :dst ::key
                :d (s/nilable ::decorator))
   :ret ::key)
 
-(defn add-edge [i pat tail? dst d]
-  (let [k (add-node i pat tail?)]
-    (when-not (get-in graph (conj k :edges dst d))
-      (update! graph update-in (conj k :edges dst) conjs d)
+(defn add-edge [^Machine vm i pat tail? dst d]
+  (let [k (add-node vm i pat tail?)]
+    (when-not (get-in @(.graph vm) (conj k :edges dst d))
+      (vswap! (.graph vm) update-in (conj k :edges dst) conjs d)
       ;; Replay previously generated parses.
-      (doseq [t (get-in graph (conj k :generated))]
-        (send [:pass dst (decorate pat t d)])))
+      (doseq [t (get-in @(.graph vm) (conj k :generated))]
+        (send vm [:pass dst (decorate pat t d)])))
     k))
 
 (s/fdef pass
-  :args (s/cat :k ::key, :t ::tree))
+  :args (s/cat :vm machine? :k ::key, :t ::tree))
 
-(defn pass [[_ pat tail? :as k] t] ;XXX rename to "generate?" or "emit?"
+(defn pass [^Machine vm [_ pat tail? :as k] t] ;XXX rename to "generate?" or "emit?"
   (when (or (not tail?)
-            (= (-> t ::a/end :idx) (count input)))
+            (= (-> t ::a/end :idx) (count (.input vm))))
     (let [t (assoc t ::a/pattern pat)]
-      (when-not (get-in graph (conj k :generated t))
-        (update! graph update-in (conj k :generated) conjs t)
-        (doseq [[dst ds] (get-in graph (conj k :edges))
+      (when-not (get-in @(.graph vm) (conj k :generated t))
+        (vswap! (.graph vm) update-in (conj k :generated) conjs t)
+        (doseq [[dst ds] (get-in @(.graph vm) (conj k :edges))
                 d ds]
-          (send [:pass dst (decorate pat t d)]))))))
+          (send vm [:pass dst (decorate pat t d)]))))))
 
-(defn pass-child [k t]
-  (pass k (assoc t ::a/children [t])))
+(defn pass-child [^Machine vm k t]
+  (pass vm k (assoc t ::a/children [t])))
 
-(defn empty-at [i]
-  (let [p (pos-at i)]
+(defn empty-at [^Machine vm i]
+  (let [p (pos-at vm i)]
     {::a/begin p
      ::a/end p
      ::a/children []
@@ -213,62 +199,63 @@
 
 ;;; Terminals.
 
-(defn lit-init [i c k]
-  (let [x (input-at i)]
+(defn lit-init [^Machine vm i c k]
+  (let [x (input-at vm i)]
     (when (= x c)
-      (pass k {::a/begin (pos-at i)
-               ::a/end (pos-at (inc i))
-               ::a/value x}))))
+      (pass vm k {::a/begin (pos-at vm i)
+                  ::a/end (pos-at vm (inc i))
+                  ::a/value x}))))
 
-(defn lit-failure [i c]
-  (let [x (input-at i)]
+(defn lit-failure [^Machine vm i c]
+  (let [x (input-at vm i)]
     (when (not= x c)
-      {::a/pos (pos-at i)
+      {::a/pos (pos-at vm i)
        ::a/expected c
        ::a/actual x})))
 
-(defmethod init 'ambiparse/lit [[i [_ c] _ :as k]]
-  (lit-init i c k))
+(defmethod init 'ambiparse/lit [^Machine vm [i [_ c] _ :as k]]
+  (lit-init vm i c k))
 
-(defmethod -failure 'ambiparse/lit [[i [_ c] _]]
-  (lit-failure i c))
+(defmethod -failure 'ambiparse/lit [^Machine vm [i [_ c] _]]
+  (lit-failure vm i c))
 
-(defmethod init java.lang.Character [[i c _ :as k]]
-  (lit-init i c k))
+(defmethod init java.lang.Character [^Machine vm [i c _ :as k]]
+  (lit-init vm i c k))
 
-(defmethod -failure java.lang.Character [[i c _]]
-  (lit-failure i c))
+(defmethod -failure java.lang.Character [^Machine vm [i c _]]
+  (lit-failure vm i c))
 
-(defmethod init java.lang.String [[i s _ :as k]]
+(defmethod init java.lang.String [^Machine vm [i s _ :as k]]
   (loop [n 0]
     (if (< n (count s))
-      (when (= (input-at (+ i n)) (nth s n))
+      (when (= (input-at vm (+ i n)) (nth s n))
         (recur (inc n)))
-      (pass k {::a/begin (pos-at i)
-               ::a/end (pos-at (+ i n))
-               ::a/value s}))))
+      (pass vm k {::a/begin (pos-at vm i)
+                  ::a/end (pos-at vm (+ i n))
+                  ::a/value s}))))
 
-(defmethod -failure java.lang.String [[i s tail?]]
+(defmethod -failure java.lang.String [^Machine vm [i s tail?]]
   (loop [n 0]
-    (if (and (< n (count s)) (= (input-at (+ i n)) (nth s n)))
+    (if (and (< n (count s)) (= (input-at vm (+ i n)) (nth s n)))
       (recur (inc n))
-      (let [actual (subs input i (min (count input) (+ i (count s))))]
-        {::a/pos (pos-at (+ i n))
+      (let [j (min (count (.input vm)) (+ i (count s)))
+            actual (subs (.instr vm) i j)]
+        {::a/pos (pos-at vm (+ i n))
          ::a/expected s
          ::a/actual actual}))))
 
-(defmethod init 'ambiparse/-pred [[i [_ _ f] _ :as k]]
-  (let [x (input-at i)]
+(defmethod init 'ambiparse/-pred [^Machine vm [i [_ _ f] _ :as k]]
+  (let [x (input-at vm i)]
     (when (f x)
-      (pass k {::a/begin (pos-at i)
-               ::a/end (pos-at (inc i))
-               ::a/value x}))))
+      (pass vm k {::a/begin (pos-at vm i)
+                  ::a/end (pos-at vm (inc i))
+                  ::a/value x}))))
 
-(defmethod -failure 'ambiparse/-pred [[i [_ expr f] _ :as k]]
-  (let [x (input-at i)]
+(defmethod -failure 'ambiparse/-pred [^Machine vm [i [_ expr f] _ :as k]]
+  (let [x (input-at vm i)]
     (when-not (f x)
       {::a/message "Predicate failed"
-       ::a/pos (pos-at i)
+       ::a/pos (pos-at vm i)
        ::a/predicate f
        ::a/expression expr
        ::a/actual x})))
@@ -276,150 +263,152 @@
 
 ;;; Concatenation.
 
-(defn do-cat [t [_ _ tail? :as k] pats]
+(defn do-cat [^Machine vm t [_ _ tail? :as k] pats]
   (if-let [[p & ps] pats]
     (let [i (-> t ::a/end :idx)
           d {:prefix t :continue ps}
           tl? (and (empty? ps) tail?)]
-      (add-edge i p tl? k d))
-    (pass k (assoc t ::a/structure (second k)))))
+      (add-edge vm i p tl? k d))
+    (pass vm k (assoc t ::a/structure (second k)))))
 
-(defmethod init 'ambiparse/cat [[i [_ & pats] tail? :as k]]
-  (do-cat (empty-at i) k pats))
+(defmethod init 'ambiparse/cat [^Machine vm [i [_ & pats] tail? :as k]]
+  (do-cat vm (empty-at vm i) k pats))
 
-(defmethod passed 'ambiparse/cat [k t]
-  (do-cat (dissoc t ::a/continue) k (::a/continue t)))
+(defmethod passed 'ambiparse/cat [^Machine vm k t]
+  (do-cat vm (dissoc t ::a/continue) k (::a/continue t)))
 
 (defn rightmost [kw xs]
   ;XXX return _all_ rightmost, otherwise nested alts mask other alts.
   (when (seq xs)
     (apply max-key #(-> % kw :idx) xs)))
 
-(defn rightmost-received [k]
-  (rightmost ::a/end (received k)))
+(defn rightmost-received [vm k]
+  (rightmost ::a/end (received vm k)))
 
-(defmethod -failure 'ambiparse/cat [[i [_ & pats] tail? :as k]]
-  (if-let [t (rightmost-received k)]
+(defmethod -failure 'ambiparse/cat [^Machine vm [i [_ & pats] tail? :as k]]
+  (if-let [t (rightmost-received vm k)]
     (when-let [cont (::a/continue t)]
-      (failure [(-> t ::a/end :idx) (first cont) tail?]))
+      (failure vm [(-> t ::a/end :idx) (first cont) tail?]))
     (when-first [p pats]
-      (failure [i p tail?]))))
+      (failure vm [i p tail?]))))
 
 
 ;;; Alternation.
 
-(defmethod init 'ambiparse/alt [[i [_ & pats] tail? :as k]]
+(defmethod init 'ambiparse/alt [^Machine vm [i [_ & pats] tail? :as k]]
   (doseq [pat pats]
-    (add-edge i pat tail? k nil)))
+    (add-edge vm i pat tail? k nil)))
 
-(defmethod passed 'ambiparse/alt [k t]
-  (pass-child k t))
+(defmethod passed 'ambiparse/alt [^Machine vm k t]
+  (pass-child vm k t))
 
-(defmethod -failure 'ambiparse/alt [[i [_ & pats] tail?]]
-  (let [errs (->> pats (map #(failure [i % tail?])) (remove nil?))
+(defmethod -failure 'ambiparse/alt [^Machine vm [i [_ & pats] tail?]]
+  (let [errs (->> pats (map #(failure vm [i % tail?])) (remove nil?))
         pos (->> errs (rightmost ::a/pos) ::a/pos)
         errs (filter #(= (::a/pos %) pos) errs)]
     (cond
-      (next errs) {::a/pos (pos-at i) ::a/alts (set errs)}
+      (next errs) {::a/pos (pos-at vm i) ::a/alts (set errs)}
       (seq errs) (first errs))))
 
 
 ;;; Repetition.
 
-(defn do-rep [[_ [_ pat] tail? :as k] t]
-  (pass k t)
+(defn do-rep [^Machine vm [_ [_ pat] tail? :as k] t]
+  (pass vm k t)
   (let [i (-> t ::a/end :idx)]
-    (add-edge i pat false k {:prefix t})))
+    (add-edge vm i pat false k {:prefix t})))
 
-(defmethod init 'ambiparse/* [[i _ tail? :as k]]
-  (do-rep k (empty-at i)))
+(defmethod init 'ambiparse/* [^Machine vm [i _ tail? :as k]]
+  (do-rep vm k (empty-at vm i)))
 
-(defmethod init 'ambiparse/+ [[i [_ pat] tail? :as k]]
-  (add-edge i pat false k {:prefix (empty-at i)}))
+(defmethod init 'ambiparse/+ [^Machine vm [i [_ pat] tail? :as k]]
+  (add-edge vm i pat false k {:prefix (empty-at vm i)}))
 
-(defmethod passed 'ambiparse/* [k t]
-  (do-rep k t))
+(defmethod passed 'ambiparse/* [^Machine vm k t]
+  (do-rep vm k t))
 
-(defmethod passed 'ambiparse/+ [k t]
-  (do-rep k t))
+(defmethod passed 'ambiparse/+ [^Machine vm k t]
+  (do-rep vm k t))
 
-(defn rep-failure [[i [_ pat] tail? :as k]]
+(defn rep-failure [^Machine vm [i [_ pat] tail? :as k]]
   (when tail?
-    (let [e (or (-> (rightmost-received k) ::a/end :idx) i)]
-      (failure [e pat false]))))
+    (let [e (or (-> (rightmost-received vm k) ::a/end :idx) i)]
+      (failure vm [e pat false]))))
 
-(defmethod -failure 'ambiparse/* [k]
-  (rep-failure k))
+(defmethod -failure 'ambiparse/* [^Machine vm k]
+  (rep-failure vm k))
 
-(defmethod -failure 'ambiparse/+ [[i [_ pat] tail? :as k]]
-  (or (failure [i pat false])
-      (rep-failure k)))
+(defmethod -failure 'ambiparse/+ [^Machine vm [i [_ pat] tail? :as k]]
+  (or (failure vm [i pat false])
+      (rep-failure vm k)))
 
 
 ;;; Optional.
 
-(defmethod init 'ambiparse/? [[i [_ pat] tail? :as k]]
-  (let [t (empty-at i)]
-    (pass k t)
-    (add-edge i pat tail? k {:prefix t})))
+(defmethod init 'ambiparse/? [^Machine vm [i [_ pat] tail? :as k]]
+  (let [t (empty-at vm i)]
+    (pass vm k t)
+    (add-edge vm i pat tail? k {:prefix t})))
 
-(defmethod passed 'ambiparse/? [k t]
-  (pass k t))
+(defmethod passed 'ambiparse/? [^Machine vm k t]
+  (pass vm k t))
 
-(defmethod -failure 'ambiparse/? [[i [_ pat] tail?]]
+(defmethod -failure 'ambiparse/? [^Machine vm [i [_ pat] tail?]]
   (when tail?
-    (failure [i pat tail?])))
+    (failure vm [i pat tail?])))
 
 
 ;;; Transformation.
 
-(defmethod init 'ambiparse/-rule [[i [_ pat _ f] tail? :as k]]
-  (add-edge i pat tail? k nil))
+(defmethod init 'ambiparse/-rule [^Machine vm [i [_ pat _ f] tail? :as k]]
+  (add-edge vm i pat tail? k nil))
 
-(defmethod passed 'ambiparse/-rule [[i [_ pat _ f] tail? :as k] t]
-  (pass-child k (f t)))
+(defmethod passed 'ambiparse/-rule [^Machine vm [i [_ pat _ f] tail? :as k] t]
+  (pass-child vm k (f t)))
 
-(defmethod -failure 'ambiparse/-rule [[i [_ pat expr _] tail? :as k]]
+(defmethod -failure 'ambiparse/-rule
+  [^Machine vm [i [_ pat expr _] tail? :as k]]
   ;;XXX Use expr if the rule failed.
-  (failure [i pat tail?]))
+  (failure vm [i pat tail?]))
 
 
 ;;; Labeling.
 
-(defmethod init 'ambiparse/label [[i [_ name pat] tail? :as k]]
-  (add-edge i pat tail? k nil))
+(defmethod init 'ambiparse/label [^Machine vm [i [_ name pat] tail? :as k]]
+  (add-edge vm i pat tail? k nil))
 
 (defn strip-labels [t]
   (->> t (filter (fn [[k v]] (= (namespace k) "ambiparse"))) (into {})))
 
-(defmethod passed 'ambiparse/label [[i [_ name pat] tail? :as k] t]
-  (pass-child k (assoc (strip-labels t) name (::a/value t))))
+(defmethod passed 'ambiparse/label [^Machine vm [i [_ name pat] tail? :as k] t]
+  (pass-child vm k (assoc (strip-labels t) name (::a/value t))))
 
-(defmethod -failure 'ambiparse/label [[i [_ _ pat] tail?]]
-  (failure [i pat tail?]))
+(defmethod -failure 'ambiparse/label [^Machine vm [i [_ _ pat] tail?]]
+  (failure vm [i pat tail?]))
 
 
 ;;; Indirection.
 
-(defmethod init clojure.lang.Var [[i pat tail? :as k]]
-  (add-edge i @pat tail? k nil))
+(defmethod init clojure.lang.Var [^Machine vm [i pat tail? :as k]]
+  (add-edge vm i @pat tail? k nil))
 
-(defmethod passed clojure.lang.Var [[i pat tail? :as k] t]
-  (pass-child k (assoc t ::a/var pat)))
+(defmethod passed clojure.lang.Var [^Machine vm [i pat tail? :as k] t]
+  (pass-child vm k (assoc t ::a/var pat)))
 
-(defmethod -failure clojure.lang.Var [[i pat tail?]]
-  (some-> (failure [i @pat tail?])
+(defmethod -failure clojure.lang.Var [^Machine vm [i pat tail?]]
+  (some-> (failure vm [i @pat tail?])
           (assoc ::a/var pat)))
 
 
 ;;; Precedence.
 
-(defmethod init 'ambiparse/-prefer [[i [_ _ pat cmp] tail? :as k]]
-  (add-edge i pat tail? k nil))
+(defmethod init 'ambiparse/-prefer [^Machine vm [i [_ _ pat cmp] tail? :as k]]
+  (add-edge vm i pat tail? k nil))
 
-(defmethod passed 'ambiparse/-prefer [[i [_ _ pat cmp] tail? :as k] t]
+(defmethod passed 'ambiparse/-prefer
+  [^Machine vm [i [_ _ pat cmp] tail? :as k] t]
   ;;XXX set exception if cmp fails.
-  (let [buffer (get-in graph (conj k :buffer))
+  (let [buffer (get-in @(.graph vm) (conj k :buffer))
         buffer* (cond
                   ;; First parse.
                   (empty? buffer) #{t}
@@ -429,109 +418,121 @@
                   ;;TODO: Compare in one pass over buffer.
                   (some #(zero? (cmp % t)) buffer) (conjs buffer t))]
     (when buffer*
-      (update! graph assoc-in (conj k :buffer) buffer*)
-      (update! buffered conj k))))
+      (vswap! (.graph vm) assoc-in (conj k :buffer) buffer*)
+      (vswap! (.buffered vm) conj k))))
 
-(defmethod -failure 'ambiparse/-prefer [[i [_ _ pat] tail?]]
-  (failure [i pat tail?]))
+(defmethod -failure 'ambiparse/-prefer [^Machine vm [i [_ _ pat] tail?]]
+  (failure vm [i pat tail?]))
 
 
 ;;; Filtering.
 ;;TODO: remove seems more common - better primative?
 
-(defmethod init 'ambiparse/-filter [[i [_ _ pat _] tail? :as k]]
-  (add-edge i pat tail? k nil))
+(defmethod init 'ambiparse/-filter [^Machine vm [i [_ _ pat _] tail? :as k]]
+  (add-edge vm i pat tail? k nil))
 
-(defmethod passed 'ambiparse/-filter [[i [_ _ pat f] tail? :as k] t]
+(defmethod passed 'ambiparse/-filter
+  [^Machine vm [i [_ _ pat f] tail? :as k] t]
   (when (f t)
-    (pass-child k t)))
+    (pass-child vm k t)))
 
-(defmethod -failure 'ambiparse/-filter [[i [_ expr pat f] tail? :as k]]
-  (if-let [rs (received k)]
+(defmethod -failure 'ambiparse/-filter
+  [^Machine vm [i [_ expr pat f] tail? :as k]]
+  (if-let [rs (received vm k)]
     {::a/message "Filter predicate failed"
      ::a/predicate f
      ::a/expression expr
-     ::a/pos (pos-at i)
+     ::a/pos (pos-at vm i)
      ::a/candidates rs}
-    (failure [i pat tail?])))
+    (failure vm [i pat tail?])))
 
 
 ;;; Execution.
 
-(defn exec [[op k & args :as msg]]
+(defn exec [^Machine vm [op k & args :as msg]]
   (log 'exec msg)
   (try
     (case op
-      :init (init k)
+      :init (init vm k)
       :pass (let [[t] args]
-              (when-not (get-in graph (conj k :received t))
-                (passed k t)
-                (update! graph update-in (conj k :received) conjs t))))
-    (catch Exception ex
+              (when-not (get-in @(.graph vm) (conj k :received t))
+                (passed vm k t)
+                (vswap! (.graph vm) update-in (conj k :received) conjs t))))
+    (catch Exception ex ;XXX
       (log 'catch-at k ex)
-      (update! graph update-in (conj k :exception) #(or % ex)))))
+      (vswap! (.graph vm) update-in (conj k :exception) #(or % ex)))))
 
-(defn pump []
+(defn pump [^Machine vm]
   (log 'pump)
   ;; Execute queued messages.
-  (let [q queue]
-    (set! queue [])
+  (let [q @(.queue vm)]
+    (vreset! (.queue vm) [])
     (doseq [msg q]
-      (when (zero? (update! fuel dec))
+      (when (zero? (set! (.fuel vm) (dec (.fuel vm))))
         (throw (Exception. "out of fuel!")))
-      (exec msg)))
+      (exec vm msg)))
   ;; When subgraphs quiesce, flush buffers.
-  (when (empty? queue)
+  (when (empty? @(.queue vm))
     (log 'quiescence)
-    (when-let [q (seq buffered)]
-      (set! buffered #{})
+    (when-let [q (seq @(.buffered vm))]
+      (vreset! (.buffered vm) #{})
       (doseq [k q
-              :when (not (get-in graph (conj k :exception)))
-              t (get-in graph (conj k :buffer))]
-        (pass-child k t)
+              :when (not (get-in @(.graph vm) (conj k :exception)))
+              t (get-in @(.graph vm) (conj k :buffer))]
+        (pass-child vm k t)
         ;;XXX clear the buffer!
         ))))
 
-(defn run []
-  (apply add-node root)
-  (try
-    (while (seq queue)
-      (pump))
-    (finally
-      (log 'final-state= (state))
-      ;(ambiparse.viz/show! graph)
-      )))
+(defn indexed [x]
+  (if (instance? clojure.lang.Indexed x)
+    x
+    (reify
+      clojure.lang.Counted
+      (count [_] (count x))
+      clojure.lang.Indexed
+      (nth [_ i] (nth x i))
+      (nth [_ i notFound] (nth x i notFound)))))
 
-(defn with-run-fn [pat s f]
-  (binding [input s
-            root [0 pat true]
-            graph []
-            queue []
-            buffered #{}
-            breaks (when (string? s) [0])
-            traveled 0
-            fuel fuel]
-    (run)
-    (f)))
+(defn run [pat s]
+  (let [vm (Machine.)]
+    (set! (.input vm) (indexed s))
+    (when (string? s)
+      (set! (.instr vm) s))
+    (set! (.root vm) [0 pat true])
+    (set! (.graph vm) (volatile! []))
+    (when (string? s)
+      (set! (.breaks vm) (volatile! [0])))
+    (set! (.queue vm) (volatile! []))
+    (set! (.buffered vm) (volatile! #{}))
+    ;(set! (.fuel vm) 400)
+    (apply add-node vm (.root vm))
+    (try
+      (while (seq @(.queue vm))
+        (pump vm))
+      (finally
+        (log 'final-state= (state))
+        ;(ambiparse.viz/show! graph)
+        ))
+    vm))
 
-(defmacro with-run [pat s & body]
-  `(with-run-fn ~pat ~s (fn [] ~@body)))
+(defn generated [^Machine vm k]
+  (get-in @(.graph vm) (conj k :generated)))
 
-(defn trees []
-  (generated root))
+(defn trees [^Machine vm]
+  (generated vm (.root vm)))
 
-(defn parses []
-  (map ::a/value (trees)))
+(defn parses [^Machine vm]
+  (map ::a/value (trees vm)))
 
-(defn parse []
-  (let [ps (distinct (parses))]
+(defn parse [^Machine vm]
+  (let [ps (distinct (parses vm))]
     (if (seq ps)
       [(first ps) (when (next ps)
                     {::a/message "Ambiguous" ::a/parses (take 2 ps)})]
-      [nil (or (failure) (throw (Exception. "Unknown failure")))])))
+      [nil (or (failure vm) (throw (Exception. "Unknown failure")))])))
 
-(defn parse! []
-  (let [[p err] (parse)]
+(defn parse! [^Machine vm]
+  (let [[p err] (parse vm)]
     (when err
       (throw (ex-info "Parse failed" err)))
     p))

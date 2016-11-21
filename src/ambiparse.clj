@@ -1,7 +1,8 @@
 (ns ambiparse
   (:refer-clojure :exclude [cat * + filter remove interpose cons])
   (:require [ambiparse.gll :as gll]
-            [ambiparse.util :refer :all]))
+            [ambiparse.util :refer :all])
+  (:import (ambiparse Machine)))
 
 ;; Reserve the ambiparse namespace for non-label metadata.
 (create-ns 'ambiparse.core)
@@ -64,16 +65,13 @@
 ;;; Execution.
 
 (defn parses [pat s]
-  (gll/with-run pat s
-    (gll/parses)))
+  (gll/parses (gll/run pat s)))
 
 (defn parse [pat s]
-  (gll/with-run pat s
-    (gll/parse)))
+  (gll/parse (gll/run pat s)))
 
 (defn parse! [pat s]
-  (gll/with-run pat s
-    (gll/parse!)))
+  (gll/parse! (gll/run pat s)))
 
 
 ;;; Library.
