@@ -11,6 +11,11 @@
     \x "x" #{\x}
     \y "x" #{}
 
+    "" "" #{""}
+    "" "x" #{}
+    "xy" "xy" #{"xy"}
+    "xy" "xz" #{}
+
     (a/cat) "" #{[]}
     (a/cat) "x" #{}
     (a/cat \x) "x" #{[\x]}
@@ -77,6 +82,16 @@
     {::a/expected \x ::a/actual ::a/eof
      ::a/pos {:idx 0 :line 1 :col 1}}
 
+    ;; Unexpected string.
+    "abcd" "abxd"
+    {::a/expected "abcd" ::a/actual "abxd"
+     ::a/pos {:idx 2 :line 1 :col 3}}
+
+    ;; Short string.
+    "xy" "x"
+    {::a/expected "xy" ::a/actual "x"
+     ::a/pos {:idx 1 :line 1 :col 2}}
+
     ;; Failure in element of concatenation.
     (a/cat \x \y) "zy"
     {::a/expected \x ::a/actual \z
@@ -92,7 +107,8 @@
 
     ;; Multiple rightmost failures.
     (a/alt \x \y) "z"
-    {::a/alts #{{::a/expected \x ::a/actual \z
+    {::a/pos {:idx 0 :line 1 :col 1}
+     ::a/alts #{{::a/expected \x ::a/actual \z
                  ::a/pos {:idx 0 :line 1 :col 1}}
                 {::a/expected \y ::a/actual \z
                  ::a/pos {:idx 0 :line 1 :col 1}}}}

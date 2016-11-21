@@ -30,6 +30,9 @@
 (def ^{:dynamic true
        :doc "Vector mapping line minus one to index of previous newline."}
   breaks)
+(def ^{:dynamic true
+       :doc "Furthest index into the input examined."}
+  traveled)
 
 ;;; Debug state.
 (def trace false)
@@ -153,34 +156,20 @@
 (defn pass-child [k t]
   (pass k (assoc t ::a/children [t])))
 
+(defn maybe-break [i c]
+  (assert (<= i (inc traveled)))
+  (update! traveled max traveled i)
+  (when (and (= c \newline)
+             breaks
+             (< (peek breaks) i))
+    (update! breaks conj i)))
+
 (defn input-at [i]
   (if (< i (count input))
-    (nth input i)
+    (let [c (nth input i)]
+      (maybe-break i c)
+      c)
     ::a/eof))
-
-
-;;; Terminals.
-
-;;TODO: java.lang.String
-
-(defmethod init java.lang.Character [[i c _ :as k]]
-  (let [x (input-at i)
-        _ (when (and (= x \newline)
-                     breaks
-                     (< (peek breaks) i))
-            (update! breaks conj i))
-        t {::a/begin (pos-at i)
-           ::a/end (pos-at (inc i))
-           ::a/value x}]
-    (when (= x c)
-      (pass k t))))
-
-(defmethod -failure java.lang.Character [[i c tail?]]
-  (let [x (input-at i)]
-    (when (not= x c)
-      {::a/pos (pos-at i)
-       ::a/expected c
-       ::a/actual x})))
 
 (defn empty-at [i]
   (let [p (pos-at i)]
@@ -189,6 +178,43 @@
      ::a/children []
      ::a/elements []
      ::a/value []}))
+
+
+;;; Terminals.
+
+
+(defmethod init java.lang.Character [[i c _ :as k]]
+  (let [x (input-at i)
+        t {::a/begin (pos-at i)
+           ::a/end (pos-at (inc i))
+           ::a/value x}]
+    (when (= x c)
+      (pass k t))))
+
+(defmethod -failure java.lang.Character [[i c _]]
+  (let [x (input-at i)]
+    (when (not= x c)
+      {::a/pos (pos-at i)
+       ::a/expected c
+       ::a/actual x})))
+
+(defmethod init java.lang.String [[i s _ :as k]]
+  (loop [n 0]
+    (if (< n (count s))
+      (when (= (input-at (+ i n)) (nth s n))
+        (recur (inc n)))
+      (pass k {::a/begin (pos-at i)
+               ::a/end (pos-at (+ i n))
+               ::a/value s}))))
+
+(defmethod -failure java.lang.String [[i s tail?]]
+  (loop [n 0]
+    (if (and (< n (count s)) (= (input-at (+ i n)) (nth s n)))
+      (recur (inc n))
+      (let [actual (subs input i (min (count input) (+ i (count s))))]
+        {::a/pos (pos-at (+ i n))
+         ::a/expected s
+         ::a/actual actual}))))
 
 
 ;;; Concatenation.
@@ -224,6 +250,8 @@
 
 ;;; Alternation.
 
+;;TODO: Character classes.
+
 (defmethod init 'ambiparse/alt [[i [_ & pats] tail? :as k]]
   (doseq [pat pats]
     (add-edge i pat tail? k nil)))
@@ -236,7 +264,7 @@
         pos (->> errs (rightmost ::a/pos) ::a/pos)
         errs (filter #(= (::a/pos %) pos) errs)]
     (cond
-      (next errs) {::a/alts (set errs)}
+      (next errs) {::a/pos (pos-at i) ::a/alts (set errs)}
       (seq errs) (first errs))))
 
 
@@ -425,6 +453,7 @@
             queue []
             buffered #{}
             breaks (when (string? s) [])
+            traveled 0
             fuel fuel]
     (run)
     (f)))

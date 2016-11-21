@@ -13,6 +13,7 @@
 (comment
 
   (party \x "x")
+  (party "xy" "xy")
   (party (a/cat) "")
   (party (a/cat) "x")
   (party (a/cat \x) "x")
