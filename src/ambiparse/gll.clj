@@ -1,6 +1,7 @@
 (ns ambiparse.gll
   (:refer-clojure :exclude [send])
-  (:require [ambiparse.util :refer :all]))
+  (:require [clojure.spec :as s]
+            [ambiparse.util :refer :all]))
 
 (create-ns 'ambiparse)
 (alias 'a 'ambiparse)
@@ -34,7 +35,7 @@
 (def trace false)
 (def ^:dynamic fuel
   "Steps to perform before giving up. Set to 0 to disable."
-  300)
+  500)
 
 (defmacro log [& xs]
   (require 'fipp.edn)
@@ -44,6 +45,7 @@
 (defn state []
   {:input input
    :graph graph
+   :root root
    :queue queue
    :fuel fuel})
 
@@ -58,13 +60,13 @@
                breaks)
     {:idx i}))
 
-(defn classify [x]
-  (if (sequential? x)
-    (first x)
-    (class x)))
+(defn classify [pat]
+  (if (sequential? pat)
+    (first pat)
+    (class pat)))
 
-(defn dispatch [[i x]]
-  (classify x))
+(defn dispatch [[i pat tail?]]
+  (classify pat))
 
 ;; Fully re-create multimethods for dev sanity.
 (doseq [sym '[init passed -failure]]
@@ -85,16 +87,18 @@
 (defn generated [k]
   (get-in graph (conj k :generated)))
 
+(def ^:dynamic inside)
+
 (defn failure
-  ([] (-failure root))
-  ([[i & _ :as k]]
-   (if-let [ex (get-in graph (conj k :exception))]
-     {::a/exception ex ::a/pos (pos-at i)}
-     (cond
-       (generated k) nil
-       (< (count input) i) {::a/pos (pos-at i)
-                            ::a/message "Unexpected end of input"}
-       :else (-failure k)))))
+  ([]
+   (binding [inside #{}]
+     (failure root)))
+  ([[i _ _ :as k]]
+   (when-not (inside k)
+     (binding [inside (conj inside k)]
+       (if-let [ex (get-in graph (conj k :exception))]
+         {::a/exception ex ::a/pos (pos-at i)}
+         (-failure k))))))
 
 (defn received [k]
   (get-in graph (conj k :received)))
@@ -106,10 +110,10 @@
   (update! queue conj msg)
   nil)
 
-(defn add-node [i pat]
-  (let [k [i pat]]
+(defn add-node [i pat tail?]
+  (let [k [i pat tail?]]
     (when-not (get-in graph k)
-      (update! graph assoc-in k {})
+      (update! graph assoc-in k {:tail? tail?})
       (send [:init k]))
     k))
 
@@ -127,8 +131,8 @@
              {::a/continue continue}))
     t))
 
-(defn add-edge [i pat dst d]
-  (let [k (add-node i pat)]
+(defn add-edge [i pat tail? dst d]
+  (let [k (add-node i pat tail?)]
     (when-not (get-in graph (conj k :edges dst d))
       (update! graph update-in (conj k :edges dst) conjs d)
       ;; Replay previously generated parses.
@@ -136,13 +140,15 @@
         (send [:pass dst (decorate pat t d)])))
     k))
 
-(defn pass [[_ pat :as k] t] ;XXX rename to "generate?" or "emit?"
-  (let [t (assoc t ::a/pattern pat)]
-    (when-not (get-in graph (conj k :generated t))
-      (update! graph update-in (conj k :generated) conjs t)
-      (doseq [[dst ds] (get-in graph (conj k :edges))
-              d ds]
-        (send [:pass dst (decorate pat t d)])))))
+(defn pass [[_ pat tail? :as k] t] ;XXX rename to "generate?" or "emit?"
+  (when (or (not tail?)
+            (= (-> t ::a/end :idx) (count input)))
+    (let [t (assoc t ::a/pattern pat)]
+      (when-not (get-in graph (conj k :generated t))
+        (update! graph update-in (conj k :generated) conjs t)
+        (doseq [[dst ds] (get-in graph (conj k :edges))
+                d ds]
+          (send [:pass dst (decorate pat t d)]))))))
 
 (defn pass-child [k t]
   (pass k (assoc t ::a/children [t])))
@@ -153,30 +159,11 @@
     ::a/eof))
 
 
-;;; Root.
-
-(defmethod init :root [[i [_ pat] :as k]]
-  (add-edge i pat k nil))
-
-(defmethod passed :root [k t]
-  ;;TODO: Move this filter to the sender to minimize message traffic.
-  ;; Can be done recursively, so any node that is in some sort of
-  ;; "tail position" can drop interior parse messages. h/t Mark Engelberg.
-  ;; This will also eliminate the explicit root node completely.
-  (log 'parsed? t)
-  (when (= (-> t ::a/end :idx) (count input))
-    (log 'parsed! t)
-    (pass-child k t)))
-
-(defmethod -failure :root [[i [_ pat]]]
-  (failure [i pat]))
-
-
 ;;; Terminals.
 
 ;;TODO: java.lang.String
 
-(defmethod init java.lang.Character [[i c :as k]]
+(defmethod init java.lang.Character [[i c _ :as k]]
   (let [x (input-at i)
         _ (when (and (= x \newline)
                      breaks
@@ -188,7 +175,7 @@
     (when (= x c)
       (pass k t))))
 
-(defmethod -failure java.lang.Character [[i c]]
+(defmethod -failure java.lang.Character [[i c tail?]]
   (let [x (input-at i)]
     (when (not= x c)
       {::a/pos (pos-at i)
@@ -206,14 +193,15 @@
 
 ;;; Concatenation.
 
-(defn do-cat [t k pats]
+(defn do-cat [t [_ _ tail? :as k] pats]
   (if-let [[p & ps] pats]
     (let [i (-> t ::a/end :idx)
-          d {:prefix t :continue ps}]
-      (add-edge i p k d))
+          d {:prefix t :continue ps}
+          tl? (and (empty? ps) tail?)]
+      (add-edge i p tl? k d))
     (pass k (assoc t ::a/structure (second k)))))
 
-(defmethod init 'ambiparse/cat [[i [_ & pats] :as k]]
+(defmethod init 'ambiparse/cat [[i [_ & pats] tail? :as k]]
   (do-cat (empty-at i) k pats))
 
 (defmethod passed 'ambiparse/cat [k t]
@@ -226,25 +214,25 @@
 (defn rightmost-received [k]
   (rightmost ::a/end (received k)))
 
-(defmethod -failure 'ambiparse/cat [[i [_ & pats] :as k]]
+(defmethod -failure 'ambiparse/cat [[i [_ & pats] tail? :as k]]
   (if-let [t (rightmost-received k)]
     (if-let [cont (::a/continue t)]
       (failure [(-> t ::a/end :idx) (first cont)]))
     (when-first [p pats]
-      (failure [i p]))))
+      (failure [i p tail?]))))
 
 
 ;;; Alternation.
 
-(defmethod init 'ambiparse/alt [[i [_ & pats] :as k]]
+(defmethod init 'ambiparse/alt [[i [_ & pats] tail? :as k]]
   (doseq [pat pats]
-    (add-edge i pat k nil)))
+    (add-edge i pat tail? k nil)))
 
 (defmethod passed 'ambiparse/alt [k t]
   (pass-child k t))
 
-(defmethod -failure 'ambiparse/alt [[i [_ & pats]]]
-  (let [errs (->> pats (map #(failure [i %])) (remove nil?))
+(defmethod -failure 'ambiparse/alt [[i [_ & pats] tail?]]
+  (let [errs (->> pats (map #(failure [i % tail?])) (remove nil?))
         pos (->> errs (rightmost ::a/pos) ::a/pos)
         errs (filter #(= (::a/pos %) pos) errs)]
     (cond
@@ -254,16 +242,16 @@
 
 ;;; Repetition.
 
-(defn do-rep [[_ [_ pat] :as k] t]
+(defn do-rep [[_ [_ pat] tail? :as k] t]
   (pass k t)
   (let [i (-> t ::a/end :idx)]
-    (add-edge i pat k {:prefix t})))
+    (add-edge i pat false k {:prefix t})))
 
-(defmethod init 'ambiparse/* [[i _ :as k]]
+(defmethod init 'ambiparse/* [[i _ tail? :as k]]
   (do-rep k (empty-at i)))
 
-(defmethod init 'ambiparse/+ [[i [_ pat] :as k]]
-  (add-edge i pat k {:prefix (empty-at i)}))
+(defmethod init 'ambiparse/+ [[i [_ pat] tail? :as k]]
+  (add-edge i pat false k {:prefix (empty-at i)}))
 
 (defmethod passed 'ambiparse/* [k t]
   (do-rep k t))
@@ -271,20 +259,25 @@
 (defmethod passed 'ambiparse/+ [k t]
   (do-rep k t))
 
-(defmethod -failure 'ambiparse/* [k]
-  ;;XXX If at end of string, get failure from rightmost+1 occurence of pattern.
-  nil)
+(defn rep-failure [[i [_ pat] tail? :as k]]
+  (when tail?
+    (let [e (or (-> (rightmost-received k) ::a/end :idx) i)]
+      (failure [e pat false]))))
 
-(defmethod -failure 'ambiparse/+ [[i [_ pat]]]
-  (failure [i pat]))
+(defmethod -failure 'ambiparse/* [k]
+  (rep-failure k))
+
+(defmethod -failure 'ambiparse/+ [[i [_ pat] tail? :as k]]
+  (or (failure [i pat false])
+      (rep-failure k)))
 
 
 ;;; Optional.
 
-(defmethod init 'ambiparse/? [[i [_ pat] :as k]]
+(defmethod init 'ambiparse/? [[i [_ pat] tail? :as k]]
   (let [t (empty-at i)]
     (pass k t)
-    (add-edge i pat k {:prefix t})))
+    (add-edge i pat tail? k {:prefix t})))
 
 (defmethod passed 'ambiparse/? [k t]
   (pass k t))
@@ -296,25 +289,26 @@
 
 ;;; Transformation.
 
-(defmethod init 'ambiparse/-rule [[i [_ pat f] :as k]]
-  (add-edge i pat k nil))
+(defmethod init 'ambiparse/-rule [[i [_ pat _ f] tail? :as k]]
+  (add-edge i pat tail? k nil))
 
-(defmethod passed 'ambiparse/-rule [[i [_ pat f] :as k] t]
+(defmethod passed 'ambiparse/-rule [[i [_ pat _ f] tail? :as k] t]
   (pass-child k (f t)))
 
-(defmethod -failure 'ambiparse/-rule [[i [_ pat] :as k]]
+(defmethod -failure 'ambiparse/-rule [[i [_ pat expr _] tail? :as k]]
+  ;;XXX Use expr if the rule failed.
   (failure [i pat]))
 
 
 ;;; Labeling.
 
-(defmethod init 'ambiparse/label [[i [_ name pat] :as k]]
-  (add-edge i pat k nil))
+(defmethod init 'ambiparse/label [[i [_ name pat] tail? :as k]]
+  (add-edge i pat tail? k nil))
 
 (defn strip-labels [t]
   (->> t (filter (fn [[k v]] (= (namespace k) "ambiparse"))) (into {})))
 
-(defmethod passed 'ambiparse/label [[i [_ name pat] :as k] t]
+(defmethod passed 'ambiparse/label [[i [_ name pat] tail? :as k] t]
   (pass-child k (assoc (strip-labels t) name (::a/value t))))
 
 (defmethod -failure 'ambiparse/label [[i [_ _ pat]]]
@@ -323,10 +317,10 @@
 
 ;;; Indirection.
 
-(defmethod init clojure.lang.Var [[i pat :as k]]
-  (add-edge i @pat k nil))
+(defmethod init clojure.lang.Var [[i pat tail? :as k]]
+  (add-edge i @pat tail? k nil))
 
-(defmethod passed clojure.lang.Var [[i pat :as k] t]
+(defmethod passed clojure.lang.Var [[i pat tail? :as k] t]
   (pass-child k (assoc t ::a/var pat)))
 
 (defmethod -failure clojure.lang.Var [[i pat]]
@@ -336,10 +330,10 @@
 
 ;;; Precedence.
 
-(defmethod init 'ambiparse/prefer [[i [_ cmp pat] :as k]]
-  (add-edge i pat k nil))
+(defmethod init 'ambiparse/-prefer [[i [_ _ pat cmp] tail? :as k]]
+  (add-edge i pat tail? k nil))
 
-(defmethod passed 'ambiparse/prefer [[i [_ cmp pat] :as k] t]
+(defmethod passed 'ambiparse/-prefer [[i [_ _ pat cmp] tail? :as k] t]
   ;;XXX set exception if cmp fails.
   (let [buffer (get-in graph (conj k :buffer))
         buffer* (cond
@@ -354,21 +348,21 @@
       (update! graph assoc-in (conj k :buffer) buffer*)
       (update! buffered conj k))))
 
-(defmethod -failure 'ambiparse/prefer [[i [_ _ pat]]]
+(defmethod -failure 'ambiparse/-prefer [[i [_ _ pat]]]
   (failure [i pat]))
 
 
 ;;; Filtering.
 ;;TODO: remove seems more common - better primative?
 
-(defmethod init 'ambiparse/filter [[i [_ _ _ pat] :as k]]
-  (add-edge i pat k nil))
+(defmethod init 'ambiparse/-filter [[i [_ _ pat _] tail? :as k]]
+  (add-edge i pat tail? k nil))
 
-(defmethod passed 'ambiparse/filter [[i [_ f expr pat] :as k] t]
+(defmethod passed 'ambiparse/-filter [[i [_ _ pat f] tail? :as k] t]
   (when (f t)
     (pass-child k t)))
 
-(defmethod -failure 'ambiparse/filter [[i [_ f expr pat] :as k]]
+(defmethod -failure 'ambiparse/-filter [[i [_ expr pat f] tail? :as k]]
   (if-let [rs (received k)]
     {::a/message "Predicate failed"
      ::a/predicate f
@@ -426,7 +420,7 @@
 
 (defn with-run-fn [pat s f]
   (binding [input s
-            root [0 [:root pat]]
+            root [0 pat true]
             graph []
             queue []
             buffered #{}
@@ -449,7 +443,7 @@
     (if (seq ps)
       [(first ps) (when (next ps)
                     {::a/message "Ambiguous" ::a/parses (take 2 ps)})]
-      [nil (failure root)])))
+      [nil (or (failure) (throw (Exception. "Unknown failure")))])))
 
 (defn parse! []
   (let [[p err] (parse)]

@@ -20,28 +20,32 @@
 (defn ? [pat]
   (list `? pat))
 
-(defn -rule [pat f]
-  (list `-rule pat f))
+(defn -rule [pat expr f]
+  (list `-rule pat expr f))
 
 (defmacro rule [pat & body]
-  `(-rule ~pat
+  `(-rule ~pat '~body
           (fn [~'%]
             (assoc ~'% ::value (do ~@body)))))
 
 (defn label [name pat]
   (list `label name pat))
 
-(defn prefer [cmp pat & pats]
-  (list `prefer cmp
-        (if (seq pats)
-          (apply alt pat pats)
-          pat)))
+(defn -prefer [expr pat f]
+  (list `-prefer expr pat f))
 
-(defn -filter [f expr pat]
-  (list `filter f expr pat))
+(defmacro prefer [f pat & pats]
+  `(-prefer '~f
+            ~(if (seq pats)
+               `(alt ~pat ~@pats)
+               pat)
+            ~f))
+
+(defn -filter [expr pat f]
+  (list `-filter expr pat f))
 
 (defmacro filter [f pat]
-  `(-filter ~f '~f ~pat))
+  `(-filter '~f ~pat ~f))
 
 
 ;;; Execution.
@@ -71,7 +75,7 @@
   (prefer (comparator-key count) pat))
 
 (defmacro remove [f pat]
-  `(-filter (comp not ~f) '~(list 'comp 'not f) ~pat))
+  `(-filter '~(list 'comp 'not f) ~pat (comp not ~f)))
 
 (defn nested-at? [f t]
   (= (-> t ::elements f ::structure) (::structure t)))

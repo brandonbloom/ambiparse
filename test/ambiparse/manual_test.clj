@@ -1,8 +1,7 @@
 (ns ambiparse.manual-test
   (:require [fipp.edn :refer [pprint]]
             [ambiparse :as a]
-            [ambiparse.gll :as gll]
-            [ambiparse.util :refer :all]))
+            [ambiparse.gll :as gll]))
 
 (defn party [pat s]
   (gll/with-run pat s

@@ -72,8 +72,10 @@
     {::a/expected \x ::a/actual \y
      ::a/pos {:idx 0 :line 1 :col 1}}
 
-    ;XXX \x "xz" {:UNEXPECTED_EOF '?
-    ;XXX          ::a/pos {:idx 1 :line 1 :col 2}}
+    ;; Unexpected end of input.
+    \x ""
+    {::a/expected \x ::a/actual ::a/eof
+     ::a/pos {:idx 0 :line 1 :col 1}}
 
     ;; Failure in element of concatenation.
     (a/cat \x \y) "zy"
@@ -95,8 +97,13 @@
                 {::a/expected \y ::a/actual \z
                  ::a/pos {:idx 0 :line 1 :col 1}}}}
 
-    ;; Rep failure.
-    (a/+ \x) "y"
+    ;; Tail zero-or-more failure.
+    (a/* (a/cat \x \y)) "x"
+    {::a/expected \y ::a/actual ::a/eof
+     ::a/pos {:idx 1 :line 1 :col 2}}
+
+    ;; First one-or-more failure.
+    (a/+ (a/cat \x \z)) "yz"
     {::a/expected \x ::a/actual \y
      ::a/pos {:idx 0 :line 1 :col 1}}
 
