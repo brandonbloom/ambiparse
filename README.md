@@ -1,10 +1,49 @@
-# gll
+# Ambiparse
 
-A Clojure library designed to ... well, that part is up to you.
+Ambiparse is an embedded Clojure DSL that provides generalized context-free
+grammar parsing with disambiguation filters, semantic actions, and a rich
+standard library.
+
+## Overview
+
+Generalized context-free grammars means: all context free grammars are
+supported, including both left and right recursive grammars. The parser is
+capable of returning a parse forest of ambiguous parses.
+
+Disambiguation filters are a principled approach to eliminating ambiguity
+from context free grammars. Examples include declarative operator associativity
+and precedence, as well as filtering by arbitrary predicates.
+
+Semantic actions provide tree rewriting at parse time.  Coupling Clojure
+expressions to grammar productions enables easy creation of abstract syntax
+trees as functions over concrete syntax tree nodes.
 
 ## Usage
 
-FIXME
+Ambiparse is still very early days, so no release has been published, and a
+metric ton of documentation is yet to be written. This project was built to
+serve a higher-priority project, so it may be a while, if ever, that this
+changes.
+
+See the [calculator][1] and [edn parser][2] test code for examples.
+
+The public API is provided by [ambiparse.clj][8] exclusively.
+
+Note that performance is expectedly awful. This too may never change.
+
+## References
+
+- [GLL Parsing][5] by Scott and Johnstone.
+- [Disambiguation Filters for Scannerless Generalized LR Parsers][6]
+  by M.G.J. van den Brand et al.
+- [Faster, Practical GLL Parsing][7] by Afroozeh and Izmaylova.
+
+## Acknowledgements
+
+Thanks to Mark Engelberg for [Instaparse][3], an excellent library that you
+probably should use over Ambiparse, [his talk][4] which is an excellent
+explanation of the GLL algorithm, as well as several excellent discussions
+on the finer points of the algorithm's implementation.
 
 ## License
 
@@ -12,3 +51,12 @@ Copyright © 2016 Brandon Bloom
 
 Distributed under the Eclipse Public License either version 1.0 or (at
 your option) any later version.
+
+[1]: ./test/ambiparse/calc_test.clj
+[2]: ./test/ambiparse/edn_test.clj
+[3]: https://github.com/Engelberg/instaparse
+[4]: https://www.youtube.com/watch?v=b2AUW6psVcE
+[5]: http://dotat.at/tmp/gll.pdf
+[6]: http://www.st.ewi.tudelft.nl/~eelco/papers/BSVV02.pdf
+[7]: http://oai.cwi.nl/oai/asset/24026/24026B.pdf
+[8]: ./src/ambiparse.clj
