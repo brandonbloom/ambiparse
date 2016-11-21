@@ -12,6 +12,8 @@
 (defn unform [pat]
   (if (sequential? pat)
     (case (first pat)
+      ambiparse/lit (list* 'a/lit (second pat))
+      ambiparse/-pred (list* 'a/pred (second pat))
       ambiparse/cat (list* 'a/cat (map unform (next pat)))
       ambiparse/alt (list* 'a/alt (map unform (next pat)))
       ambiparse/label (list 'a/label (second pat) (-> pat (nth 2) unform))

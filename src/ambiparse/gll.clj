@@ -179,17 +179,18 @@
      ::a/elements []
      ::a/value []}))
 
+(defn item-at [i]
+  )
+
 
 ;;; Terminals.
 
-;;TODO: any / predicate / character classes
 (defn lit-init [i c k]
-  (let [x (input-at i)
-        t {::a/begin (pos-at i)
-           ::a/end (pos-at (inc i))
-           ::a/value x}]
+  (let [x (input-at i)]
     (when (= x c)
-      (pass k t))))
+      (pass k {::a/begin (pos-at i)
+               ::a/end (pos-at (inc i))
+               ::a/value x}))))
 
 (defn lit-failure [i c]
   (let [x (input-at i)]
@@ -227,6 +228,22 @@
         {::a/pos (pos-at (+ i n))
          ::a/expected s
          ::a/actual actual}))))
+
+(defmethod init 'ambiparse/-pred [[i [_ _ f] _ :as k]]
+  (let [x (input-at i)]
+    (when (f x)
+      (pass k {::a/begin (pos-at i)
+               ::a/end (pos-at (inc i))
+               ::a/value x}))))
+
+(defmethod -failure 'ambiparse/-pred [[i [_ expr f] _ :as k]]
+  (let [x (input-at i)]
+    (when-not (f x)
+      {::a/message "Predicate failed"
+       ::a/pos (pos-at i)
+       ::a/predicate f
+       ::a/expression expr
+       ::a/actual x})))
 
 
 ;;; Concatenation.
@@ -404,7 +421,7 @@
 
 (defmethod -failure 'ambiparse/-filter [[i [_ expr pat f] tail? :as k]]
   (if-let [rs (received k)]
-    {::a/message "Predicate failed"
+    {::a/message "Filter predicate failed"
      ::a/predicate f
      ::a/expression expr
      ::a/pos (pos-at i)

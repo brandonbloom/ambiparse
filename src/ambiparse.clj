@@ -12,6 +12,12 @@
 (defn lit [x]
   (list `lit x))
 
+(defn -pred [f expr]
+  (list `-pred f expr))
+
+(defmacro pred [f]
+  `(-pred '~f ~f))
+
 (defn cat [& pats]
   (list* `cat pats))
 

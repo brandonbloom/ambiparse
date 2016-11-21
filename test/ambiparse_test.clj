@@ -18,6 +18,9 @@
 
     (a/lit :x) [:x] #{:x}
 
+    (a/pred even?) [1] #{}
+    (a/pred even?) [2] #{2}
+
     (a/cat) "" #{[]}
     (a/cat) "x" #{}
     (a/cat \x) "x" #{[\x]}
@@ -68,8 +71,8 @@
 (defn clean-error [[t err]]
   [t (cond-> err
        (contains? err ::a/exception) (update ::a/exception #(.getMessage %))
-       (contains? err ::a/predicate) (assoc ::a/predicate '...
-                                            ::a/candidates '#{...}))])
+       (contains? err ::a/predicate) (assoc ::a/predicate '...)
+       (contains? err ::a/candidates) (assoc ::a/candidates '#{...}))])
 
 (deftest errors-test
   (are [pat s err] (= (clean-error (a/parse pat s)) [nil err])
@@ -97,6 +100,14 @@
     ;; Lit failure in non-string input.
     (a/lit :x) [:y]
     {::a/expected :x ::a/actual :y
+     ::a/pos {:idx 0}}
+
+    ;; Predicate failed.
+    (a/pred even?) [1]
+    {::a/message "Predicate failed"
+     ::a/predicate '...
+     ::a/expression 'even?
+     ::a/actual 1
      ::a/pos {:idx 0}}
 
     ;; Failure in element of concatenation.
@@ -174,7 +185,7 @@
 
     ;; Filter predicate failed.
     (a/filter (constantly false) \x) "x"
-    {::a/message "Predicate failed"
+    {::a/message "Filter predicate failed"
      ::a/predicate '...
      ::a/expression '(constantly false)
      ::a/candidates '#{...}
@@ -182,7 +193,7 @@
 
     ;; Remove predicate failed.
     (a/remove (constantly true) \x) "x"
-    {::a/message "Predicate failed"
+    {::a/message "Filter predicate failed"
      ::a/predicate '...
      ::a/expression '(comp not (constantly true))
      ::a/candidates '#{...}

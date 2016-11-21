@@ -58,8 +58,9 @@
          (a/rule "tab" \tab)))
 
 (def Char
-  ;XXX Add any, disallow whitespace after the slash.
-  (a/rule (a/cat \\ (a/label :char (a/alt NamedChar #_ANY)))
+  (a/rule (a/cat \\ (a/label :char (a/alt NamedChar
+                                          ;;TODO Use a negative match.
+                                          (a/pred #(not= \space %)))))
           (:char %)))
 
 (def List
