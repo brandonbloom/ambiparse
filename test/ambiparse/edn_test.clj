@@ -10,8 +10,11 @@
 
 (declare Form)
 
+(def LineComment
+  (a/cat \; (a/* (a/pred #(not= \newline %))) \newline))
+
 (def Space
-  (a/+ (a/alt \space \tab \newline \,)))
+  (a/+ (a/alt \space \tab \newline \, LineComment)))
 
 (def Forms
   (a/cat (a/? Space)

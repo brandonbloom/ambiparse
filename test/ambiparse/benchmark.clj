@@ -4,7 +4,7 @@
             [ambiparse.edn-test :refer [Forms]])
   (:import (java.io StringReader PushbackReader)))
 
-(def edn (slurp (io/resource "ambiparse/edn_test.clj")))
+(def edn (slurp (io/resource "stuff.edn")))
 
 (defn read-all [s]
   (let [r (-> s StringReader. PushbackReader.)]
@@ -12,13 +12,18 @@
          (take-while #(not= % ::eof))
          vec)))
 
-(prn 'reader)
-(time
-  (dotimes [_ 1000]
-    (read-all edn)))
+(comment
 
-(prn 'ambiparse)
-(time
-  (dotimes [_ 1]
-    (a/parse! Forms edn)))
+  (prn 'reader)
+  (time
+    (dotimes [_ 100]
+      (read-all edn)))
 
+  (prn 'ambiparse)
+  (time
+    (dotimes [_ 10]
+      (a/parse! Forms edn)))
+
+  (subs edn 50)
+
+)

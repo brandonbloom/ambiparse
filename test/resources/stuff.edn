@@ -1,0 +1,10 @@
+;; Just some random code taken from this project, then non-edn features
+;; (or just featured I didn't feel like implemeting) stripped out.
+
+(defn do-cat [t [_ _ tail? :as k] pats]
+  (if-let [[p & ps] pats]
+    (let [i (-> t :a/end :idx)
+          d {:prefix t :continue ps}
+          tl? (and (empty? ps) tail?)]
+      (add-edge i p tl? k d))
+    (pass k (assoc t :a/structure (second k)))))

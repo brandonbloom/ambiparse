@@ -58,7 +58,23 @@
 
 (s/def ::key (s/spec (s/cat :i integer?, :pat ::pattern, :tail? boolean?)))
 
+(defn scan-breaks [i]
+  (when (< traveled i)
+    (doseq [n (range traveled (min (inc i) (dec (count input))))]
+      (when (and (= (nth input i) \newline)
+                 breaks
+                 (< (peek breaks) n))
+        (update! breaks conj n)))
+    (set! traveled i)))
+
+(defn input-at [i]
+  (if (< i (count input))
+    (do (scan-breaks i)
+        (nth input i))
+    ::a/eof))
+
 (defn pos-at [i]
+  (scan-breaks i)
   (if breaks
     ;;TODO: Binary search?
     (reduce-kv (fn [res n b]
@@ -186,21 +202,6 @@
 (defn pass-child [k t]
   (pass k (assoc t ::a/children [t])))
 
-(defn maybe-break [i c]
-  (assert (<= i (inc traveled)))
-  (update! traveled max traveled i)
-  (when (and (= c \newline)
-             breaks
-             (< (peek breaks) i))
-    (update! breaks conj i)))
-
-(defn input-at [i]
-  (if (< i (count input))
-    (let [c (nth input i)]
-      (maybe-break i c)
-      c)
-    ::a/eof))
-
 (defn empty-at [i]
   (let [p (pos-at i)]
     {::a/begin p
@@ -290,6 +291,7 @@
   (do-cat (dissoc t ::a/continue) k (::a/continue t)))
 
 (defn rightmost [kw xs]
+  ;XXX return _all_ rightmost, otherwise nested alts mask other alts.
   (when (seq xs)
     (apply max-key #(-> % kw :idx) xs)))
 
@@ -298,7 +300,7 @@
 
 (defmethod -failure 'ambiparse/cat [[i [_ & pats] tail? :as k]]
   (if-let [t (rightmost-received k)]
-    (if-let [cont (::a/continue t)]
+    (when-let [cont (::a/continue t)]
       (failure [(-> t ::a/end :idx) (first cont) tail?]))
     (when-first [p pats]
       (failure [i p tail?]))))
@@ -364,9 +366,9 @@
 (defmethod passed 'ambiparse/? [k t]
   (pass k t))
 
-(defmethod -failure 'ambiparse/? [k]
-  ;;XXX If at end of string, get failure from pattern.
-  nil)
+(defmethod -failure 'ambiparse/? [[i [_ pat] tail?]]
+  (when tail?
+    (failure [i pat tail?])))
 
 
 ;;; Transformation.
