@@ -1,11 +1,16 @@
- idea: ask vs tell -- you're told about parses/errors OR
- you can ask for them.
-TODO: error recovery
-TODO: disambiguation filters:
- - preceeds/follows restruction
- - exclude
- - prefer/avoid
- - prioritize
-TODO: Consider cut operator. See:
- Packrat Parsers Can Handle Practical Grammars in Mostly Constant Space
- "Tell" version of errors - can "commit" or "abort" current node.
+TODO
+  - error recovery
+  - more disambiguation filters:
+    - preceeds/follows restruction
+  - Consider cut operator. See:
+    Packrat Parsers Can Handle Practical Grammars in Mostly Constant Space
+    "Tell" version of errors - can "commit" or "abort" current node.
+  - Is tail? as part of the node id correct? necessary?
+
+Known issues:
+  - epsilon infinite loops
+  - bad error messages from nested alts or multiple-rightmost partial parses
+
+Perf Idea:
+  - on construction of a pattern, compute a "lead" predicate on the first char
+  - test the lead-predicate on add-node / add-edge to prevent creation

@@ -19,8 +19,6 @@
 ;;;   dst = destination key of edge
 ;;;   d = decorator attached to edges
 
-;;TODO: Combine in to single state record? Benchmark.
-
 ;;; Essential state.
 (def ^:dynamic input)
 (def ^:dynamic graph)
