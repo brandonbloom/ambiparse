@@ -18,15 +18,22 @@
 
 (declare Expr)
 
-(defn binop [c f]
+(defn flat-op [op f]
+  (a/flat (a/rule (a/cat (a/label :first #'Expr)
+                         (a/label :rest (a/* (a/cat Space #'Expr))))
+                  (apply f (:first %) (->> % :rest (map second))))))
+
+(defn binop [op f]
   (a/rule (a/cat (a/label :lhs #'Expr) Space
-                 (a/label :op c) Space
+                 (a/label :op op) Space
                  (a/label :rhs #'Expr))
           (f (:lhs %) (:rhs %))))
 
+;;XXX Use flat-op for these after fixing infinite-loop / stack-overflow.
 (def Plus (binop \+ +))
-(def Minus (binop \- -))
-(def Times (a/left (binop \* *)))
+(def Times (binop \* *))
+
+(def Minus (a/left (binop \- -)))
 (def Divide (a/left (binop \/ /)))
 (def Pow (a/right (binop \^ #(Math/pow %1 %2))))
 
@@ -57,5 +64,5 @@
     ))
 
 (comment
-  (a/parse! Expr "2 * 4 + 3")
+  (a/parse! Expr "2 + 4 + 3")
 )

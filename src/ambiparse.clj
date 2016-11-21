@@ -5,6 +5,9 @@
 
 ;;; Primitives.
 
+(defn lit [x]
+  (list `lit x))
+
 (defn cat [& pats]
   (list* `cat pats))
 
@@ -80,6 +83,10 @@
 (defn nested-at? [f t]
   (= (-> t ::elements f ::structure) (::structure t)))
 
+(defn nested? [t]
+  (let [s (::structure t)]
+    (some #(= (::structure %) s) (::elements t))))
+
 (defn nested-left? [t]
   (nested-at? first t))
 
@@ -91,6 +98,10 @@
 
 (defn right [pat]
   (remove nested-left? pat))
+
+;;TODO: Test this.
+(defn flat [pat]
+  (remove nested? pat))
 
 (defn interpose [sep elem]
   (rule (? (cat (label ::first elem) (label ::rest (* (cat sep elem)))))
