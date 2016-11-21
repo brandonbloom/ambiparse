@@ -40,9 +40,9 @@
 
 ;;TODO: Put cons in to lib?
 (def Symbol
-  (a/rule (a/cat (a/label :first (a/alt Alpha SymbolChars))
-                 (a/label :rest (a/* (a/alt Alpha Digit SymbolChars))))
-          (symbol (apply str (:first %) (:rest %)))))
+  (a/rule (a/cons (a/alt Alpha SymbolChars)
+                  (a/* (a/alt Alpha Digit SymbolChars)))
+          (symbol (apply str (::a/value %)))))
 
 (def Keyword
   (a/rule (a/cat \: (a/label :symbol Symbol))
@@ -90,11 +90,11 @@
     "[ 1 2 3  ]"
     "{}"
     "{:x 1}"
-    "{:x 1 :y 2}"
+    "{:x 1, :y 2}"
     "()"
     "(a b c)"
     ))
 
 (comment
-  (a/parse! Form "\\newline")
+  (a/parse! Form "{:x 1 :y 2}")
 )

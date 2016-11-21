@@ -1,7 +1,11 @@
 (ns ambiparse
-  (:refer-clojure :exclude [cat * + filter remove interpose])
+  (:refer-clojure :exclude [cat * + filter remove interpose cons])
   (:require [ambiparse.gll :as gll]
             [ambiparse.util :refer :all]))
+
+;; Reserve the ambiparse namespace for non-label metadata.
+(create-ns 'ambiparse.core)
+(alias 'c 'ambiparse.core)
 
 ;;; Primitives.
 
@@ -104,6 +108,10 @@
   (remove nested? pat))
 
 (defn interpose [sep elem]
-  (rule (? (cat (label ::first elem) (label ::rest (* (cat sep elem)))))
+  (rule (? (cat (label ::c/first elem) (label ::c/rest (* (cat sep elem)))))
         (when (-> % ::value seq)
-          (list* (::first %) (->> % ::rest (map second))))))
+          (list* (::c/first %) (->> % ::c/rest (map second))))))
+
+(defn cons [x seq]
+  (rule (cat (label ::c/first x) (label ::c/rest seq))
+        (list* (::c/first %) (::c/rest %))))
