@@ -31,18 +31,24 @@
 (def Num
   Int)
 
-(def Alpha
-  ;;TODO: Case insensitive.
-  (apply a/alt (map #(char (+ (int \a) %)) (range 26))))
-
 (def SymbolChars
-  (apply a/alt ".*+!-_?$%&=<>"))
+  (a/pred #((set ".*+!-_?$%&=<>") %)))
 
-;;TODO: Put cons in to lib?
+(def BaseName
+  (a/rule (a/cons (a/alt a/alpha SymbolChars)
+                  (a/* (a/alt a/alpha Digit SymbolChars)))
+          (->> % ::a/value (apply str))))
+
+(def Namespace
+  BaseName)
+
+(def Name
+  (a/alt BaseName "/"))
+
 (def Symbol
-  (a/rule (a/cons (a/alt Alpha SymbolChars)
-                  (a/* (a/alt Alpha Digit SymbolChars)))
-          (symbol (apply str (::a/value %)))))
+  (a/alt (a/rule (a/cat (a/label :ns Namespace) \/ (a/label :name Name))
+                 (symbol (:ns %) (:name %)))
+         (a/rule Name (-> % ::a/value symbol))))
 
 (def Keyword
   (a/rule (a/cat \: (a/label :symbol Symbol))
@@ -82,6 +88,8 @@
   (are [s] (= (a/parse! Form s) (read-string s))
     "15"
     "xyz"
+    "a/b"
+    "/"
     ":abc"
     ;XXX "\\x"
     "\\newline"

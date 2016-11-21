@@ -20,6 +20,7 @@
       ambiparse/-rule (list 'a/rule (-> pat second unform) (nth pat 2))
       ambiparse/+ (list 'a/+ (-> pat second unform))
       ambiparse/* (list 'a/* (-> pat second unform))
+      ambiparse/? (list 'a/? (-> pat second unform))
       ambiparse/-filter (list 'a/filter (second pat) (-> pat (nth 2) unform))
       ambiparse/-prefer (list 'a/prefer (second pat) (-> pat (nth 2) unform)))
     pat))

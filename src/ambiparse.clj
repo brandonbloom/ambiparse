@@ -79,7 +79,10 @@
 ;;; Library.
 
 (def digit
-  (pred #(Character/isDigit %)))
+  (pred #(and (char? %) (Character/isDigit %))))
+
+(def alpha
+  (pred #(and (char? %) (Character/isLetter %))))
 
 (defn length [t]
   (- (-> t ::end :idx) (-> t ::begin :idx)))
@@ -116,7 +119,7 @@
 (defn flat [pat]
   (remove nested? pat))
 
-(defn interpose [sep elem]
+(defn interpose [sep elem] ;XXX elem should be coll.
   (rule (? (cat (label ::c/first elem) (label ::c/rest (* (cat sep elem)))))
         (when (-> % ::value seq)
           (list* (::c/first %) (->> % ::c/rest (map second))))))

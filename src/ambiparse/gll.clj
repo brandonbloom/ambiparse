@@ -52,6 +52,12 @@
    :queue queue
    :fuel fuel})
 
+;;TODO: Better specs.
+(s/def ::pattern any?)
+(s/def ::tree any?)
+
+(s/def ::key (s/spec (s/cat :i integer?, :pat ::pattern, :tail? boolean?)))
+
 (defn pos-at [i]
   (if breaks
     ;;TODO: Binary search?
@@ -92,6 +98,8 @@
 
 (def ^:dynamic inside)
 
+(s/fdef failure :args (s/alt :root (s/cat) :specific (s/cat :k ::key)))
+
 (defn failure
   ([]
    (binding [inside #{}]
@@ -113,12 +121,23 @@
   (update! queue conj msg)
   nil)
 
+(s/fdef add-node
+  :args (s/cat :i integer?, :pat ::pattern, :tail? boolean?)
+  :ret ::key)
+
 (defn add-node [i pat tail?]
   (let [k [i pat tail?]]
     (when-not (get-in graph k)
       (update! graph assoc-in k {:tail? tail?})
       (send [:init k]))
     k))
+
+(s/def ::prefix ::tree)
+(s/def ::continue (s/nilable (s/coll-of ::pattern :kind seq?)))
+
+(s/def ::decorator
+  (s/keys :req-un [::prefix]
+          :opt-un [::continue]))
 
 (defn decorate
   "Applies a transformation to trees flowing along an edge."
@@ -134,6 +153,14 @@
              {::a/continue continue}))
     t))
 
+(s/fdef add-edge
+  :args (s/cat :i integer?
+               :pat any?
+               :tail? boolean?
+               :dst ::key
+               :d (s/nilable ::decorator))
+  :ret ::key)
+
 (defn add-edge [i pat tail? dst d]
   (let [k (add-node i pat tail?)]
     (when-not (get-in graph (conj k :edges dst d))
@@ -142,6 +169,9 @@
       (doseq [t (get-in graph (conj k :generated))]
         (send [:pass dst (decorate pat t d)])))
     k))
+
+(s/fdef pass
+  :args (s/cat :k ::key, :t ::tree))
 
 (defn pass [[_ pat tail? :as k] t] ;XXX rename to "generate?" or "emit?"
   (when (or (not tail?)
@@ -178,9 +208,6 @@
      ::a/children []
      ::a/elements []
      ::a/value []}))
-
-(defn item-at [i]
-  )
 
 
 ;;; Terminals.
@@ -272,7 +299,7 @@
 (defmethod -failure 'ambiparse/cat [[i [_ & pats] tail? :as k]]
   (if-let [t (rightmost-received k)]
     (if-let [cont (::a/continue t)]
-      (failure [(-> t ::a/end :idx) (first cont)]))
+      (failure [(-> t ::a/end :idx) (first cont) tail?]))
     (when-first [p pats]
       (failure [i p tail?]))))
 
@@ -352,7 +379,7 @@
 
 (defmethod -failure 'ambiparse/-rule [[i [_ pat expr _] tail? :as k]]
   ;;XXX Use expr if the rule failed.
-  (failure [i pat]))
+  (failure [i pat tail?]))
 
 
 ;;; Labeling.
@@ -366,8 +393,8 @@
 (defmethod passed 'ambiparse/label [[i [_ name pat] tail? :as k] t]
   (pass-child k (assoc (strip-labels t) name (::a/value t))))
 
-(defmethod -failure 'ambiparse/label [[i [_ _ pat]]]
-  (failure [i pat]))
+(defmethod -failure 'ambiparse/label [[i [_ _ pat] tail?]]
+  (failure [i pat tail?]))
 
 
 ;;; Indirection.
@@ -378,8 +405,8 @@
 (defmethod passed clojure.lang.Var [[i pat tail? :as k] t]
   (pass-child k (assoc t ::a/var pat)))
 
-(defmethod -failure clojure.lang.Var [[i pat]]
-  (some-> (failure [i @pat])
+(defmethod -failure clojure.lang.Var [[i pat tail?]]
+  (some-> (failure [i @pat tail?])
           (assoc ::a/var pat)))
 
 
@@ -403,8 +430,8 @@
       (update! graph assoc-in (conj k :buffer) buffer*)
       (update! buffered conj k))))
 
-(defmethod -failure 'ambiparse/-prefer [[i [_ _ pat]]]
-  (failure [i pat]))
+(defmethod -failure 'ambiparse/-prefer [[i [_ _ pat] tail?]]
+  (failure [i pat tail?]))
 
 
 ;;; Filtering.
@@ -424,7 +451,7 @@
      ::a/expression expr
      ::a/pos (pos-at i)
      ::a/candidates rs}
-    (failure [i pat])))
+    (failure [i pat tail?])))
 
 
 ;;; Execution.
@@ -479,7 +506,7 @@
             graph []
             queue []
             buffered #{}
-            breaks (when (string? s) [])
+            breaks (when (string? s) [0])
             traveled 0
             fuel fuel]
     (run)
