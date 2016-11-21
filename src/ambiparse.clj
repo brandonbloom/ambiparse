@@ -92,9 +92,6 @@
 (defn right [pat]
   (remove nested-left? pat))
 
-(defn flat [pat]
-  (remove nested? pat))
-
 (defn interpose [sep elem]
   (rule (? (cat (label ::first elem) (label ::rest (* (cat sep elem)))))
         (when (-> % ::value seq)
