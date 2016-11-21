@@ -4,7 +4,7 @@
             [ambiparse.util :refer :all]))
 
 (def Digit
-  (a/rule (apply a/alt (map #(char (+ (int \0) %)) (range 10)))
+  (a/rule a/digit
           (- (-> % ::a/value int) (int \0))))
 
 (def Num

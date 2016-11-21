@@ -279,8 +279,6 @@
 
 ;;; Alternation.
 
-;;TODO: Character classes.
-
 (defmethod init 'ambiparse/alt [[i [_ & pats] tail? :as k]]
   (doseq [pat pats]
     (add-edge i pat tail? k nil)))

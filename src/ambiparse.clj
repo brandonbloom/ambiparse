@@ -78,6 +78,9 @@
 
 ;;; Library.
 
+(def digit
+  (pred #(Character/isDigit %)))
+
 (defn length [t]
   (- (-> t ::end :idx) (-> t ::begin :idx)))
 
