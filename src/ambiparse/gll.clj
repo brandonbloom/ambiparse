@@ -38,7 +38,7 @@
 (def trace false)
 (def ^:dynamic fuel
   "Steps to perform before giving up. Set to 0 to disable."
-  500)
+  0)
 
 (defmacro log [& xs]
   (require 'fipp.edn)
@@ -182,6 +182,8 @@
 
 ;;; Terminals.
 
+;;TODO: any / predicate / character classes
+;;TODO: lit
 
 (defmethod init java.lang.Character [[i c _ :as k]]
   (let [x (input-at i)

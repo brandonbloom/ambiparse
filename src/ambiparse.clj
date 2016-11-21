@@ -1,5 +1,5 @@
 (ns ambiparse
-  (:refer-clojure :exclude [cat * + filter remove])
+  (:refer-clojure :exclude [cat * + filter remove interpose])
   (:require [ambiparse.gll :as gll]
             [ambiparse.util :refer :all]))
 
@@ -94,3 +94,8 @@
 
 (defn flat [pat]
   (remove nested? pat))
+
+(defn interpose [sep elem]
+  (rule (? (cat (label ::first elem) (label ::rest (* (cat sep elem)))))
+        (when (-> % ::value seq)
+          (list* (::first %) (->> % ::rest (map second))))))
