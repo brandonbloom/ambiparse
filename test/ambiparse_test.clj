@@ -16,6 +16,8 @@
     "xy" "xy" #{"xy"}
     "xy" "xz" #{}
 
+    (a/lit :x) [:x] #{:x}
+
     (a/cat) "" #{[]}
     (a/cat) "x" #{}
     (a/cat \x) "x" #{[\x]}
@@ -91,6 +93,11 @@
     "xy" "x"
     {::a/expected "xy" ::a/actual "x"
      ::a/pos {:idx 1 :line 1 :col 2}}
+
+    ;; Lit failure in non-string input.
+    (a/lit :x) [:y]
+    {::a/expected :x ::a/actual :y
+     ::a/pos {:idx 0}}
 
     ;; Failure in element of concatenation.
     (a/cat \x \y) "zy"

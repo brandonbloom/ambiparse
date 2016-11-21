@@ -14,6 +14,8 @@
 
   (party \x "x")
   (party "xy" "xy")
+  (party (a/lit :x) [:x])
+  (party (a/lit :x) [:y])
   (party (a/cat) "")
   (party (a/cat) "x")
   (party (a/cat \x) "x")

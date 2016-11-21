@@ -183,9 +183,7 @@
 ;;; Terminals.
 
 ;;TODO: any / predicate / character classes
-;;TODO: lit
-
-(defmethod init java.lang.Character [[i c _ :as k]]
+(defn lit-init [i c k]
   (let [x (input-at i)
         t {::a/begin (pos-at i)
            ::a/end (pos-at (inc i))
@@ -193,12 +191,24 @@
     (when (= x c)
       (pass k t))))
 
-(defmethod -failure java.lang.Character [[i c _]]
+(defn lit-failure [i c]
   (let [x (input-at i)]
     (when (not= x c)
       {::a/pos (pos-at i)
        ::a/expected c
        ::a/actual x})))
+
+(defmethod init 'ambiparse/lit [[i [_ c] _ :as k]]
+  (lit-init i c k))
+
+(defmethod -failure 'ambiparse/lit [[i [_ c] _]]
+  (lit-failure i c))
+
+(defmethod init java.lang.Character [[i c _ :as k]]
+  (lit-init i c k))
+
+(defmethod -failure java.lang.Character [[i c _]]
+  (lit-failure i c))
 
 (defmethod init java.lang.String [[i s _ :as k]]
   (loop [n 0]
