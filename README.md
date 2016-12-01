@@ -13,7 +13,8 @@ express arbitrary syntax extensions.
 
 Ambiguity can be reduced or eliminated from grammars with "disambiguation
 filters", which allow for declarative operator associativity and precedence,
-as well as filtering by arbitrary predicates.
+as well as filtering by arbitrary predicates. This means that the parser is
+actually capable of parsing many context-sensitive grammars as well.
 
 Being an embedded DSL enables inline semantic actions. Semantic actions can
 rewrite _concrete_ syntax trees at parse time in to arbitrary _abstract_
