@@ -136,15 +136,21 @@
   nil)
 
 (s/fdef add-node
-  :args (s/cat :i integer?, :pat ::pattern, :tail? boolean?)
-  :ret ::key)
+  :args (s/cat :i integer?, :pat ::pattern, :tail? boolean?))
+
+(defn head-fail [i pat]
+  (if (char? pat)
+    (not= (input-at i) pat)
+    (when-let [f (-> pat meta ::a/head-fail)]
+      (f (input-at i)))))
 
 (defn add-node [i pat tail?]
-  (let [k [i pat tail?]]
-    (when-not (get-in graph k)
-      (update! graph assoc-in k {:tail? tail?})
-      (send [:init k]))
-    k))
+  (when-not (head-fail i pat)
+    (let [k [i pat tail?]]
+      (when-not (get-in graph k)
+        (update! graph assoc-in k {:tail? tail?})
+        (send [:init k]))
+      k)))
 
 (s/def ::prefix ::tree)
 (s/def ::continue (s/nilable (s/coll-of ::pattern :kind seq?)))
@@ -172,17 +178,15 @@
                :pat any?
                :tail? boolean?
                :dst ::key
-               :d (s/nilable ::decorator))
-  :ret ::key)
+               :d (s/nilable ::decorator)))
 
 (defn add-edge [i pat tail? dst d]
-  (let [k (add-node i pat tail?)]
+  (when-let [k (add-node i pat tail?)]
     (when-not (get-in graph (conj k :edges dst d))
       (update! graph update-in (conj k :edges dst) conjs d)
       ;; Replay previously generated parses.
       (doseq [t (get-in graph (conj k :generated))]
-        (send [:pass dst (decorate pat t d)])))
-    k))
+        (send [:pass dst (decorate pat t d)])))))
 
 (s/fdef pass
   :args (s/cat :k ::key, :t ::tree))

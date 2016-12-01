@@ -3,6 +3,8 @@
   (:require [ambiparse.gll :as gll]
             [ambiparse.util :refer :all]))
 
+(alias 'a 'ambiparse)
+
 ;; Reserve the ambiparse namespace for non-label metadata.
 (create-ns 'ambiparse.core)
 (alias 'c 'ambiparse.core)
@@ -10,31 +12,41 @@
 ;;; Primitives.
 
 (defn lit [x]
-  (list `lit x))
+  (with-meta (list `lit x)
+             {::a/head-fail #(not= % x)}))
 
-(defn -pred [f expr]
-  (list `-pred f expr))
+(defn -pred [expr f]
+  (with-meta (list `-pred expr f)
+             {::a/head-fail (comp not f)}))
 
 (defmacro pred [f]
   `(-pred '~f ~f))
 
 (defn cat [& pats]
-  (list* `cat pats))
+  (with-meta (list* `cat pats)
+             {::a/head-fail (-> pats first meta ::a/head-fail)}))
 
 (defn alt [& pats]
-  (list* `alt pats))
+  (let [pat (list* `alt pats)]
+    (if-let [head-fail (and (seq pats)
+                            (every? (comp ::a/head-fail meta) pats)
+                            (apply every-pred (comp ::a/head-fail meta) pats))]
+      (with-meta pat {::a/head-fail head-fail})
+      pat)))
 
 (defn * [pat]
   (list `* pat))
 
 (defn + [pat]
-  (list `+ pat))
+  (with-meta (list `+ pat)
+             {::a/head-fail (-> pat meta ::a/head-fail)}))
 
 (defn ? [pat]
   (list `? pat))
 
 (defn -rule [pat expr f]
-  (list `-rule pat expr f))
+  (with-meta (list `-rule pat expr f)
+             {::a/head-fail (-> pat meta ::a/head-fail)}))
 
 (defmacro rule [pat & body]
   `(-rule ~pat '~body
@@ -42,10 +54,12 @@
             (assoc ~'% ::value (do ~@body)))))
 
 (defn label [name pat]
-  (list `label name pat))
+  (with-meta (list `label name pat)
+             {::a/head-fail (-> pat meta ::a/head-fail)}))
 
 (defn -prefer [expr pat f]
-  (list `-prefer expr pat f))
+  (with-meta (list `-prefer expr pat f)
+             {::a/head-fail (-> pat meta ::a/head-fail)}))
 
 (defmacro prefer [f pat & pats]
   `(-prefer '~f
@@ -55,7 +69,8 @@
             ~f))
 
 (defn -filter [expr pat f]
-  (list `-filter expr pat f))
+  (with-meta (list `-filter expr pat f)
+             {::a/head-fail (-> pat meta ::a/head-fail)}))
 
 (defmacro filter [f pat]
   `(-filter '~f ~pat ~f))
