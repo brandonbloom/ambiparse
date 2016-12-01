@@ -12,6 +12,7 @@
 ;;;   e = end index of span
 ;;;   pat = pattern
 ;;;   k = key of node (pair of i and pat)
+;;;   n = node
 ;;;   t = tree
 ;;;   c = char (or other atomic terminal)
 ;;;   s = string (ie. sequence of terminals)
@@ -71,11 +72,10 @@
   (s/keys :req [::a/begin ::a/end ::a/value ::a/env]
           :opt [::a/children ::a/structure ::a/elements ::a/continue]))
 
-;;XXX Make a record!
-(s/def ::key (s/spec (s/cat :i integer?,
-                            :pat ::pattern,
-                            :tail? boolean?
-                            :env ::env)))
+(defrecord Key [^int i, pat, ^boolean tail?, env])
+
+(defn key? [x]
+  (instance? Key x))
 
 (defn scan-breaks [i]
   (when (< traveled i)
@@ -104,12 +104,15 @@
                breaks)
     {:idx i}))
 
+(defn get-node [{:keys [i] :as k}]
+  (get-in graph [i k]))
+
 (defn classify [pat]
   (if (sequential? pat)
     (first pat)
     (class pat)))
 
-(defn dispatch [[i pat tail? env]]
+(defn dispatch [{:keys [i pat tail? env] :as k}]
   (classify pat))
 
 ;; Fully re-create multimethods for dev sanity.
@@ -128,26 +131,20 @@
   "Asks k for a failure."
   dispatch)
 
-(defn generated [k]
-  (get-in graph (conj k :generated)))
-
 (def ^:dynamic inside)
 
-(s/fdef failure :args (s/alt :root (s/cat) :specific (s/cat :k ::key)))
+(s/fdef failure :args (s/alt :root (s/cat) :specific (s/cat :k key?)))
 
 (defn failure
   ([]
    (binding [inside #{}]
      (failure root)))
-  ([[i _ _ :as k]]
+  ([{:keys [i] :as k}]
    (when-not (inside k)
      (binding [inside (conj inside k)]
-       (if-let [ex (get-in graph (conj k :exception))]
+       (if-let [ex (:exception (get-node k))]
          {::a/exception ex ::a/pos (pos-at i)}
          (-failure k))))))
-
-(defn received [k]
-  (get-in graph (conj k :received)))
 
 (defn send [msg]
   ;(log 'send msg)
@@ -165,9 +162,9 @@
 
 (defn add-node [i pat tail? env]
   (when-not (head-fail i pat)
-    (let [k [i pat tail? env]]
-      (when-not (get-in graph k)
-        (change! graph assoc-in k {:tail? tail? :env env})
+    (let [k (Key. i pat tail? env)]
+      (when-not (get-node k)
+        (change! graph assoc-in [(:i k) k] {:tail? tail? :env env})
         (send [:init k]))
       k)))
 
@@ -201,27 +198,29 @@
                :pat any?
                :tail? boolean?
                :env ::env
-               :dst ::key
+               :dst key?
                :d (s/nilable ::decorator)))
 
 (defn add-edge [i pat tail? env dst d]
   (when-let [k (add-node i pat tail? env)]
-    (when-not (get-in graph (conj k :edges dst d))
-      (change! graph update-in (conj k :edges dst) conjs d)
-      ;; Replay previously generated parses.
-      (doseq [t (get-in graph (conj k :generated))]
-        (send [:pass dst (decorate pat t d)])))))
+    (let [n (get-node k)]
+      (when-not (get-in n [:edges dst d])
+        (change! graph update-in [(:i k) k :edges dst] conjs d)
+        ;; Replay previously generated parses.
+        (doseq [t (:generated n)]
+          (send [:pass dst (decorate pat t d)]))))))
 
 (s/fdef pass
-  :args (s/cat :k ::key, :t ::tree))
+  :args (s/cat :k key?, :t ::tree))
 
-(defn pass [[_ pat tail? env :as k] t] ;XXX rename to "generate?" or "emit?"
+(defn pass [{:keys [pat tail? env] :as k} t]
   (when (or (not tail?)
             (= (-> t ::a/end :idx) (count input)))
-    (let [t (assoc t ::a/pattern pat)]
-      (when-not (get-in graph (conj k :generated t))
-        (change! graph update-in (conj k :generated) conjs t)
-        (doseq [[dst ds] (get-in graph (conj k :edges))
+    (let [t (assoc t ::a/pattern pat)
+          n (get-node k)]
+      (when-not (get-in n [:generated t])
+        (change! graph update-in [(:i k) k :generated] conjs t)
+        (doseq [[dst ds] (:edges n)
                 d ds]
           (send [:pass dst (decorate pat t d)]))))))
 
@@ -239,7 +238,7 @@
 
 (defn report-ex [k ex]
   (log 'catch-at k ex)
-  (change! graph update-in (conj k :exception) #(or % ex))
+  (change! graph update-in [(:i k) k :exception] #(or % ex))
   nil)
 
 (defmacro try-at [k & body]
@@ -251,7 +250,7 @@
 
 (defn report-ex [k ex]
   (log 'catch-at k ex)
-  (change! graph update-in (conj k :exception) #(or % ex))
+  (change! graph update-in [(:i k) k :exception] #(or % ex))
   nil)
 
 (defmacro try-at [k & body]
@@ -264,7 +263,7 @@
 
 ;;; Terminals.
 
-(defn lit-init [i c [_ _ _ env :as k]]
+(defn lit-init [i c {:keys [env] :as k}]
   (let [x (input-at i)]
     (when (= x c)
       (pass k {::a/begin (pos-at i)
@@ -279,19 +278,19 @@
        ::a/expected c
        ::a/actual x})))
 
-(defmethod init 'ambiparse/lit [[i [_ c] _ :as k]]
+(defmethod init 'ambiparse/lit [{:keys [i], [_ c] :pat, :as k}]
   (lit-init i c k))
 
-(defmethod -failure 'ambiparse/lit [[i [_ c] _]]
+(defmethod -failure 'ambiparse/lit [{:keys [i], [_ c] :pat}]
   (lit-failure i c))
 
-(defmethod init java.lang.Character [[i c _ :as k]]
+(defmethod init java.lang.Character [{:keys [i], c :pat, :as k}]
   (lit-init i c k))
 
-(defmethod -failure java.lang.Character [[i c _]]
+(defmethod -failure java.lang.Character [{:keys [i], c :pat}]
   (lit-failure i c))
 
-(defmethod init java.lang.String [[i s _ env :as k]]
+(defmethod init java.lang.String [{:keys [i env], s :pat, :as k}]
   (loop [n 0]
     (if (< n (count s))
       (when (= (input-at (+ i n)) (nth s n))
@@ -301,7 +300,7 @@
                ::a/value s
                ::a/env env}))))
 
-(defmethod -failure java.lang.String [[i s tail? env]]
+(defmethod -failure java.lang.String [{:keys [i tail? env], s :pat}]
   (loop [n 0]
     (if (and (< n (count s)) (= (input-at (+ i n)) (nth s n)))
       (recur (inc n))
@@ -310,7 +309,7 @@
          ::a/expected s
          ::a/actual actual}))))
 
-(defmethod init 'ambiparse/-pred [[i [_ _ f] _ env :as k]]
+(defmethod init 'ambiparse/-pred [{:keys [i env], [_ _ f] :pat, :as k}]
   (let [x (input-at i)]
     (when (try-at k (f x))
       (pass k {::a/begin (pos-at i)
@@ -318,7 +317,7 @@
                ::a/value x
                ::a/env env}))))
 
-(defmethod -failure 'ambiparse/-pred [[i [_ expr f] _ :as k]]
+(defmethod -failure 'ambiparse/-pred [{:keys [i], [_ expr f] :pat, :as k}]
   (let [x (input-at i)]
     (when-not (f x)
       {::a/message "Predicate failed"
@@ -330,7 +329,7 @@
 
 ;;; Concatenation.
 
-(defn do-cat [t [_ _ tail? _ :as k] pats]
+(defn do-cat [t {:keys [tail?] :as k} pats]
   (if-let [[p & ps] pats]
     (let [i (-> t ::a/end :idx)
           env (::a/env t)
@@ -339,7 +338,7 @@
       (add-edge i p tl? env k d))
     (pass k (assoc t ::a/structure (second k)))))
 
-(defmethod init 'ambiparse/cat [[i [_ & pats] tail? env :as k]]
+(defmethod init 'ambiparse/cat [{:keys [i tail? env], [_ & pats] :pat, :as k}]
   (do-cat (empty-at i env) k pats))
 
 (defmethod passed 'ambiparse/cat [k t]
@@ -351,27 +350,30 @@
     (apply max-key #(-> % kw :idx) xs)))
 
 (defn rightmost-received [k]
-  (rightmost ::a/end (received k)))
+  (rightmost ::a/end (-> k get-node :received)))
 
-(defmethod -failure 'ambiparse/cat [[i [_ & pats] tail? env :as k]]
+(defmethod -failure 'ambiparse/cat
+  [{:keys [i tail? env], [_ & pats] :pat, :as k}]
   (if-let [t (rightmost-received k)]
     (when-let [cont (::a/continue t)]
-      (failure [(-> t ::a/end :idx) (first cont) tail? env]))
+      (failure (Key. (-> t ::a/end :idx) (first cont) tail? env)))
     (when-first [p pats]
-      (failure [i p tail? env]))))
+      (failure (Key. i p tail? env)))))
 
 
 ;;; Alternation.
 
-(defmethod init 'ambiparse/alt [[i [_ & pats] tail? env :as k]]
+(defmethod init 'ambiparse/alt
+  [{:keys [i tail? env], [_ & pats] :pat, :as k}]
   (doseq [pat pats]
     (add-edge i pat tail? env k nil)))
 
 (defmethod passed 'ambiparse/alt [k t]
   (pass-child k t))
 
-(defmethod -failure 'ambiparse/alt [[i [_ & pats] tail? env]]
-  (let [errs (->> pats (map #(failure [i % tail? env])) (remove nil?))
+(defmethod -failure 'ambiparse/alt
+  [{:keys [i tail? env], [_ & pats] :pat}]
+  (let [errs (->> pats (map #(failure (Key. i % tail? env))) (remove nil?))
         pos (->> errs (rightmost ::a/pos) ::a/pos)
         errs (filter #(= (::a/pos %) pos) errs)]
     (cond
@@ -381,16 +383,16 @@
 
 ;;; Repetition.
 
-(defn do-rep [[_ [_ pat] tail? _ :as k] t]
+(defn do-rep [{:keys [tail?], [_ pat] :pat, :as k} t]
   (pass k t)
   (let [i (-> t ::a/end :idx)
         env (::a/env t)]
     (add-edge i pat false env k {:prefix t})))
 
-(defmethod init 'ambiparse/* [[i _ tail? env :as k]]
+(defmethod init 'ambiparse/* [{:keys [i tail? env] :as k}]
   (do-rep k (empty-at i env)))
 
-(defmethod init 'ambiparse/+ [[i [_ pat] tail? env :as k]]
+(defmethod init 'ambiparse/+ [{:keys [i tail? env], [_ pat] :pat, :as k}]
   (add-edge i pat false env k {:prefix (empty-at i env)}))
 
 (defmethod passed 'ambiparse/* [k t]
@@ -399,22 +401,22 @@
 (defmethod passed 'ambiparse/+ [k t]
   (do-rep k t))
 
-(defn rep-failure [[i [_ pat] tail? env :as k]]
+(defn rep-failure [{:keys [i tail? env], [_ pat] :pat, :as k}]
   (when tail?
     (let [e (or (-> (rightmost-received k) ::a/end :idx) i)]
-      (failure [e pat false env]))))
+      (failure (Key. e pat false env)))))
 
 (defmethod -failure 'ambiparse/* [k]
   (rep-failure k))
 
-(defmethod -failure 'ambiparse/+ [[i [_ pat] tail? env :as k]]
-  (or (failure [i pat false env])
+(defmethod -failure 'ambiparse/+ [{:keys [i tail? env], [_ pat] :pat, :as k}]
+  (or (failure (Key. i pat false env))
       (rep-failure k)))
 
 
 ;;; Optional.
 
-(defmethod init 'ambiparse/? [[i [_ pat] tail? env :as k]]
+(defmethod init 'ambiparse/? [{:keys [i tail? env], [_ pat] :pat, :as k}]
   (let [t (empty-at i env)]
     (pass k t)
     (add-edge i pat tail? env k {:prefix t})))
@@ -422,9 +424,9 @@
 (defmethod passed 'ambiparse/? [k t]
   (pass k t))
 
-(defmethod -failure 'ambiparse/? [[i [_ pat] tail? env]]
+(defmethod -failure 'ambiparse/? [{:keys [i tail? env], [_ pat] :pat}]
   (when tail?
-    (failure [i pat tail? env])))
+    (failure (Key. i pat tail? env))))
 
 
 ;;; Transformation.
@@ -439,58 +441,69 @@
           env
           muts))
 
-(defmethod init 'ambiparse/-rule [[i [_ pat _ f] tail? env :as k]]
+(defmethod init 'ambiparse/-rule
+  [{:keys [i tail? env], [_ pat _ f] :pat, :as k}]
   (add-edge i pat tail? env k nil))
 
-(defmethod passed 'ambiparse/-rule [[i [_ pat _ f] tail? env :as k] t]
+(defmethod passed 'ambiparse/-rule
+  [{:keys [i tail? env], [_ pat _ f] :pat, :as k} t]
   (binding [muts []]
     (when-let [t* (try-at k (f t))]
       (let [t* (assoc t* ::a/env (modify env))]
         (pass-child k t*)))))
 
-(defmethod -failure 'ambiparse/-rule [[i [_ pat expr _] tail? env :as k]]
+(defmethod -failure 'ambiparse/-rule
+  [{:keys [i tail? env], [_ pat expr _] :pat, :as k}]
   ;;XXX Use expr if the rule failed.
-  (failure [i pat tail? env]))
+  (failure (Key. i pat tail? env)))
 
 
 ;;; Labeling.
 
-(defmethod init 'ambiparse/label [[i [_ name pat] tail? env :as k]]
+(defmethod init 'ambiparse/label
+  [{:keys [i tail? env], [_ name pat] :pat, :as k}]
   (add-edge i pat tail? env k nil))
 
 (defn strip-labels [t]
   (->> t (filter (fn [[k v]] (= (namespace k) "ambiparse"))) (into {})))
 
-(defmethod passed 'ambiparse/label [[i [_ name pat] tail? env :as k] t]
+(defmethod passed 'ambiparse/label
+  [{:keys [i tail? env], [_ name pat] :pat, :as k} t]
   (pass-child k (assoc (strip-labels t) name (::a/value t))))
 
-(defmethod -failure 'ambiparse/label [[i [_ _ pat] tail? env]]
-  (failure [i pat tail? env]))
+(defmethod -failure 'ambiparse/label
+  [{:keys [i tail? env], [_ _ pat] :pat}]
+  (failure (Key. i pat tail? env)))
 
 
 ;;; Indirection.
 
-(defmethod init clojure.lang.Var [[i pat tail? env :as k]]
+(defmethod init clojure.lang.Var
+  [{:keys [i pat tail? env] :as k}]
   (let [p @pat
         p (if (env pat) (list* `a/alt p (env pat)) p)]
     (add-edge i p tail? env k nil)))
 
-(defmethod passed clojure.lang.Var [[i pat tail? env :as k] t]
+(defmethod passed clojure.lang.Var
+  [{:keys [i pat tail? env] :as k} t]
   (pass-child k (assoc t ::a/var pat)))
 
-(defmethod -failure clojure.lang.Var [[i pat tail? env]]
-  (some-> (failure [i @pat tail? env])
+(defmethod -failure clojure.lang.Var
+  [{:keys [i pat tail? env]}]
+  (some-> (failure (Key. i @pat tail? env))
           (assoc ::a/var pat)))
 
 
 ;;; Precedence.
 
-(defmethod init 'ambiparse/-prefer [[i [_ _ pat cmp] tail? env :as k]]
+(defmethod init 'ambiparse/-prefer
+  [{:keys [i tail? env], [_ _ pat cmp] :pat, :as k}]
   (add-edge i pat tail? env k nil))
 
-(defmethod passed 'ambiparse/-prefer [[i [_ _ pat cmp] tail? env :as k] t]
+(defmethod passed 'ambiparse/-prefer
+  [{:keys [i tail? env], [_ _ pat cmp] :pat, :as k} t]
   ;;XXX set exception if cmp fails.
-  (let [buffer (get-in graph (conj k :buffer))
+  (let [buffer (:buffer (get-node k))
         buffer* (try-at k
                   (cond
                     ;; First parse.
@@ -501,43 +514,50 @@
                     ;;TODO: Compare in one pass over buffer.
                     (some #(zero? (cmp % t)) buffer) (conjs buffer t)))]
     (when buffer*
-      (change! graph assoc-in (conj k :buffer) buffer*)
+      (change! graph assoc-in [(:i k) k :buffer] buffer*)
       (change! buffered conj k))))
 
-(defmethod -failure 'ambiparse/-prefer [[i [_ _ pat] tail? env]]
-  (failure [i pat tail? env]))
+(defmethod -failure 'ambiparse/-prefer
+  [{:keys [i tail? env], [_ _ pat] :pat}]
+  (failure (Key. i pat tail? env)))
 
 
 ;;; Filtering.
 ;;TODO: remove seems more common - better primative?
 
-(defmethod init 'ambiparse/-filter [[i [_ _ pat _] tail? env :as k]]
+(defmethod init 'ambiparse/-filter
+  [{:keys [i tail? env], [_ _ pat _] :pat, :as k}]
   (add-edge i pat tail? env k nil))
 
-(defmethod passed 'ambiparse/-filter [[i [_ _ pat f] tail? env :as k] t]
+(defmethod passed 'ambiparse/-filter
+  [{:keys [i tail? env], [_ _ pat f] :pat, :as k} t]
   (when (try-at k (f t))
     (pass-child k t)))
 
-(defmethod -failure 'ambiparse/-filter [[i [_ expr pat f] tail? env :as k]]
-  (if-let [rs (received k)]
+(defmethod -failure 'ambiparse/-filter
+  [{:keys [i tail? env], [_ expr pat f] :pat, :as k}]
+  (if-let [rs (-> k get-node :received)]
     {::a/message "Filter predicate failed"
      ::a/predicate f
      ::a/expression expr
      ::a/pos (pos-at i)
      ::a/candidates rs}
-    (failure [i pat tail? env])))
+    (failure (Key. i pat tail? env))))
 
 
 ;;; Adaptation.
 
-(defmethod init 'ambiparse/scope [[i [_ pat] tail? env :as k]]
+(defmethod init 'ambiparse/scope
+  [{:keys [i tail? env], [_ pat] :pat, :as k}]
   (add-edge i pat tail? env k nil))
 
-(defmethod passed 'ambiparse/scope [[i [_ pat] tail? env :as k] t]
+(defmethod passed 'ambiparse/scope
+  [{:keys [i tail? env], [_ pat] :pat, :as k} t]
   (pass-child k (assoc t ::a/env env)))
 
-(defmethod -failure 'ambiparse/scope [[i [_ pat] tail? env]]
-  (failure [i pat tail? env]))
+(defmethod -failure 'ambiparse/scope
+  [{:keys [i tail? env], [_ pat] :pat}]
+  (failure (Key. i pat tail? env)))
 
 
 ;;; Execution.
@@ -546,10 +566,11 @@
   (log 'exec msg)
   (case op
     :init (init k)
-    :pass (let [[t] args]
-            (when-not (get-in graph (conj k :received t))
+    :pass (let [[t] args
+                n (get-node k)]
+            (when-not (get-in n [:received t])
               (passed k t)
-              (change! graph update-in (conj k :received) conjs t)))))
+              (change! graph update-in [(:i k) k :received] conjs t)))))
 
 (defn pump []
   (log 'pump)
@@ -566,14 +587,16 @@
     (when-let [q (seq buffered)]
       (set! buffered #{})
       (doseq [k q
-              :when (not (get-in graph (conj k :exception)))
-              t (get-in graph (conj k :buffer))]
+              :let [n (get-node k)]
+              :when (not (:exception n))
+              t (:buffer n)]
         (pass-child k t)
         ;;XXX clear the buffer!
         ))))
 
 (defn run []
-  (apply add-node root)
+  (let [{:keys [i pat tail? env]} root]
+    (add-node i pat tail? env))
   (try
     (while (seq queue)
       (pump))
@@ -584,7 +607,7 @@
 
 (defn with-run-fn [pat s f]
   (binding [input s
-            root [0 pat true {}]
+            root (Key. 0 pat true {})
             graph []
             queue []
             buffered #{}
@@ -598,7 +621,7 @@
   `(with-run-fn ~pat ~s (fn [] ~@body)))
 
 (defn trees []
-  (generated root))
+  (-> root get-node :generated))
 
 (defn parses []
   (map ::a/value (trees)))

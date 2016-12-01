@@ -6,4 +6,5 @@
   :dependencies [[org.clojure/clojure "1.9.0-alpha14"]]
   :profiles {:dev {:dependencies [[dorothy "0.0.6"]
                                   [fipp "0.6.7"]]
-                   :resource-paths ["test/resources"]}})
+                   :resource-paths ["test/resources"]}}
+  :global-vars {*warn-on-reflection* true})
