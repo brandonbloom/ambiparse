@@ -41,19 +41,16 @@
         (swap! ids assoc k id)
         id)))
 
-(defn node-label [[i pat tail? env]]
+(defn node-label [{:keys [i pat tail? env]}]
   (binding [*print-level* 3]
     (str i " " (-> pat unform pr-str) \newline
          "env: " (pps env))))
 
 (defn to-dorothy [g]
   (let [ids (atom {})]
-     (for [[i pats] (map vector (range) g)
-           [pat tails] pats
-           [tail? envs] tails
-           [env {:keys [edges]}] envs
-           :let [k [i pat tail? env]
-                 src-id (identify ids k)]]
+     (for [[i ks] (map vector (range) g)
+           [{:keys [tail?] :as k} {:keys [edges]}] ks
+           :let [src-id (identify ids k)]]
        ;; Nodes.
        (list [src-id {:label (node-label k)
                       :penwidth (if tail? 3 1)}]

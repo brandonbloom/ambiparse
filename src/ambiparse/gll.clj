@@ -164,7 +164,7 @@
   (when-not (head-fail i pat)
     (let [k (Key. i pat tail? env)]
       (when-not (get-node k)
-        (change! graph assoc-in [(:i k) k] {:tail? tail? :env env})
+        (change! graph assoc-in [(:i k) k] {})
         (send [:init k]))
       k)))
 

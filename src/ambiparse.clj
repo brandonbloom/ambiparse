@@ -106,10 +106,10 @@
 ;;; Library.
 
 (def digit
-  (pred #(and (char? %) (Character/isDigit %))))
+  (pred #(and (char? %) (Character/isDigit ^Character %))))
 
 (def alpha
-  (pred #(and (char? %) (Character/isLetter %))))
+  (pred #(and (char? %) (Character/isLetter ^Character %))))
 
 (defn length [t]
   (- (-> t ::end :idx) (-> t ::begin :idx)))

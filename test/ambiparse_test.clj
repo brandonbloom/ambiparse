@@ -70,7 +70,8 @@
 
 (defn clean-error [[t err]]
   [t (cond-> err
-       (contains? err ::a/exception) (update ::a/exception #(.getMessage %))
+       (contains? err ::a/exception) (update ::a/exception
+                                             #(.getMessage ^Exception %))
        (contains? err ::a/predicate) (assoc ::a/predicate '...)
        (contains? err ::a/candidates) (assoc ::a/candidates '#{...}))])
 
