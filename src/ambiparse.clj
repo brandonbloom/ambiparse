@@ -136,8 +136,9 @@
 
 (defn interpose [sep elem] ;XXX elem should be coll.
   (rule (? (cat (label ::c/first elem) (label ::c/rest (* (cat sep elem)))))
-        (when (-> % ::value seq)
-          (list* (::c/first %) (->> % ::c/rest (map second))))))
+        (if (-> % ::value seq)
+          (into [(::c/first %)] (->> % ::c/rest (map second)))
+          [])))
 
 (defn cons [x seq]
   (rule (cat (label ::c/first x) (label ::c/rest seq))
