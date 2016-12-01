@@ -62,7 +62,7 @@
       (when (and (= (nth input i) \newline)
                  breaks
                  (< (peek breaks) n))
-        (update! breaks conj n)))
+        (change! breaks conj n)))
     (set! traveled i)))
 
 (defn input-at [i]
@@ -132,7 +132,7 @@
 
 (defn send [msg]
   ;(log 'send msg)
-  (update! queue conj msg)
+  (change! queue conj msg)
   nil)
 
 (s/fdef add-node
@@ -148,7 +148,7 @@
   (when-not (head-fail i pat)
     (let [k [i pat tail?]]
       (when-not (get-in graph k)
-        (update! graph assoc-in k {:tail? tail?})
+        (change! graph assoc-in k {:tail? tail?})
         (send [:init k]))
       k)))
 
@@ -183,7 +183,7 @@
 (defn add-edge [i pat tail? dst d]
   (when-let [k (add-node i pat tail?)]
     (when-not (get-in graph (conj k :edges dst d))
-      (update! graph update-in (conj k :edges dst) conjs d)
+      (change! graph update-in (conj k :edges dst) conjs d)
       ;; Replay previously generated parses.
       (doseq [t (get-in graph (conj k :generated))]
         (send [:pass dst (decorate pat t d)])))))
@@ -196,7 +196,7 @@
             (= (-> t ::a/end :idx) (count input)))
     (let [t (assoc t ::a/pattern pat)]
       (when-not (get-in graph (conj k :generated t))
-        (update! graph update-in (conj k :generated) conjs t)
+        (change! graph update-in (conj k :generated) conjs t)
         (doseq [[dst ds] (get-in graph (conj k :edges))
                 d ds]
           (send [:pass dst (decorate pat t d)]))))))
@@ -431,8 +431,8 @@
                   ;;TODO: Compare in one pass over buffer.
                   (some #(zero? (cmp % t)) buffer) (conjs buffer t))]
     (when buffer*
-      (update! graph assoc-in (conj k :buffer) buffer*)
-      (update! buffered conj k))))
+      (change! graph assoc-in (conj k :buffer) buffer*)
+      (change! buffered conj k))))
 
 (defmethod -failure 'ambiparse/-prefer [[i [_ _ pat] tail?]]
   (failure [i pat tail?]))
@@ -468,10 +468,10 @@
       :pass (let [[t] args]
               (when-not (get-in graph (conj k :received t))
                 (passed k t)
-                (update! graph update-in (conj k :received) conjs t))))
+                (change! graph update-in (conj k :received) conjs t))))
     (catch Exception ex
       (log 'catch-at k ex)
-      (update! graph update-in (conj k :exception) #(or % ex)))))
+      (change! graph update-in (conj k :exception) #(or % ex)))))
 
 (defn pump []
   (log 'pump)
@@ -479,7 +479,7 @@
   (let [q queue]
     (set! queue [])
     (doseq [msg q]
-      (when (zero? (update! fuel dec))
+      (when (zero? (change! fuel dec))
         (throw (Exception. "out of fuel!")))
       (exec msg)))
   ;; When subgraphs quiesce, flush buffers.

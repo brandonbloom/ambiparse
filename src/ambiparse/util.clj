@@ -1,6 +1,6 @@
 (ns ambiparse.util)
 
-(defmacro update! [v f & args]
+(defmacro change! [v f & args]
   `(set! ~v (~f ~v ~@args)))
 
 (defn compare-key [f x y]

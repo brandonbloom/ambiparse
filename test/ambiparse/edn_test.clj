@@ -6,8 +6,6 @@
 ;; performance baseline. Note: This is for test purposes only and will never
 ;; be remotely feature complete.
 
-;;TODO: Make use of character classes.
-
 (declare Form)
 
 (def LineComment
