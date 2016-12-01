@@ -212,6 +212,18 @@
      ::a/elements []
      ::a/value []}))
 
+(defn report-ex [k ex]
+  (log 'catch-at k ex)
+  (change! graph update-in (conj k :exception) #(or % ex))
+  nil)
+
+(defmacro try-at [k & body]
+  `(let [k# ~k]
+     (try
+       ~@body
+       (catch ~'Exception ex#
+         (report-ex k# ex#)))))
+
 
 ;;; Terminals.
 
@@ -261,7 +273,7 @@
 
 (defmethod init 'ambiparse/-pred [[i [_ _ f] _ :as k]]
   (let [x (input-at i)]
-    (when (f x)
+    (when (try-at k (f x))
       (pass k {::a/begin (pos-at i)
                ::a/end (pos-at (inc i))
                ::a/value x}))))
@@ -379,7 +391,7 @@
   (add-edge i pat tail? k nil))
 
 (defmethod passed 'ambiparse/-rule [[i [_ pat _ f] tail? :as k] t]
-  (pass-child k (f t)))
+  (pass-child k (try-at k (f t))))
 
 (defmethod -failure 'ambiparse/-rule [[i [_ pat expr _] tail? :as k]]
   ;;XXX Use expr if the rule failed.
@@ -422,14 +434,15 @@
 (defmethod passed 'ambiparse/-prefer [[i [_ _ pat cmp] tail? :as k] t]
   ;;XXX set exception if cmp fails.
   (let [buffer (get-in graph (conj k :buffer))
-        buffer* (cond
-                  ;; First parse.
-                  (empty? buffer) #{t}
-                  ;; Strictly preferrable.
-                  (every? #(neg? (cmp % t)) buffer) #{t}
-                  ;; Not strictly less preferrable.
-                  ;;TODO: Compare in one pass over buffer.
-                  (some #(zero? (cmp % t)) buffer) (conjs buffer t))]
+        buffer* (try-at k
+                  (cond
+                    ;; First parse.
+                    (empty? buffer) #{t}
+                    ;; Strictly preferrable.
+                    (every? #(neg? (cmp % t)) buffer) #{t}
+                    ;; Not strictly less preferrable.
+                    ;;TODO: Compare in one pass over buffer.
+                    (some #(zero? (cmp % t)) buffer) (conjs buffer t)))]
     (when buffer*
       (change! graph assoc-in (conj k :buffer) buffer*)
       (change! buffered conj k))))
@@ -445,7 +458,7 @@
   (add-edge i pat tail? k nil))
 
 (defmethod passed 'ambiparse/-filter [[i [_ _ pat f] tail? :as k] t]
-  (when (f t)
+  (when (try-at k (f t))
     (pass-child k t)))
 
 (defmethod -failure 'ambiparse/-filter [[i [_ expr pat f] tail? :as k]]
@@ -462,16 +475,12 @@
 
 (defn exec [[op k & args :as msg]]
   (log 'exec msg)
-  (try
-    (case op
-      :init (init k)
-      :pass (let [[t] args]
-              (when-not (get-in graph (conj k :received t))
-                (passed k t)
-                (change! graph update-in (conj k :received) conjs t))))
-    (catch Exception ex
-      (log 'catch-at k ex)
-      (change! graph update-in (conj k :exception) #(or % ex)))))
+  (case op
+    :init (init k)
+    :pass (let [[t] args]
+            (when-not (get-in graph (conj k :received t))
+              (passed k t)
+              (change! graph update-in (conj k :received) conjs t)))))
 
 (defn pump []
   (log 'pump)
