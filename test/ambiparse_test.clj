@@ -29,6 +29,9 @@
     (a/cat \x \y) "xy" #{[\x \y]}
     (a/cat \x \y \z) "xyz" #{[\x \y \z]}
 
+    a/eof "" #{::a/eof}
+    (a/cat \x a/eof) "x" #{[\x ::a/eof]}
+
     (a/alt \x \y) "x" #{\x}
     (a/alt \x \y) "y" #{\y}
     (a/alt \x \y) "z" #{}

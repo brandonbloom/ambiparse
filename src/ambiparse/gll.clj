@@ -108,9 +108,10 @@
   (get-in graph [i k]))
 
 (defn classify [pat]
-  (if (sequential? pat)
-    (first pat)
-    (class pat)))
+  (cond
+    (sequential? pat) (first pat)
+    (= pat 'ambiparse/eof) 'ambiparse/eof
+    :else (class pat)))
 
 (defn dispatch [{:keys [i pat tail? env] :as k}]
   (classify pat))
@@ -140,11 +141,12 @@
    (binding [inside #{}]
      (failure root)))
   ([{:keys [i] :as k}]
-   (when-not (inside k)
-     (binding [inside (conj inside k)]
-       (if-let [ex (:exception (get-node k))]
-         {::a/exception ex ::a/pos (pos-at i)}
-         (-failure k))))))
+   (let [n (get-node k)]
+     (when-not (or (inside k) (-> n :generated seq))
+       (binding [inside (conj inside k)]
+         (if-let [ex (:exception n)]
+           {::a/exception ex ::a/pos (pos-at i)}
+           (-failure k)))))))
 
 (defn send [msg]
   ;(log 'send msg)
@@ -155,10 +157,11 @@
   :args (s/cat :i integer?, :pat ::pattern, :tail? boolean?, :env ::env))
 
 (defn head-fail [i pat]
-  (if (char? pat)
-    (not= (input-at i) pat)
-    (when-let [f (-> pat meta ::a/head-fail)]
-      (f (input-at i)))))
+  (cond
+    (char? pat) (not= (input-at i) pat)
+    (= pat 'ambiparse/eof) (not= i (count input))
+    :else (when-let [f (-> pat meta ::a/head-fail)]
+            (f (input-at i)))))
 
 (defn add-node [i pat tail? env]
   (when-not (head-fail i pat)
@@ -325,6 +328,19 @@
        ::a/predicate f
        ::a/expression expr
        ::a/actual x})))
+
+(defmethod init 'ambiparse/eof [{:keys [i env] :as k}]
+  (when (= (count input) i)
+    (let [pos (pos-at i)]
+      (pass k {::a/begin pos
+               ::a/end pos
+               ::a/value ::a/eof
+               ::a/env env}))))
+
+(defmethod -failure 'ambiparse/eof [{:keys [i]}]
+  {::a/pos (pos-at i)
+   ::a/expected ::a/eof
+   ::a/actual (input-at i)})
 
 
 ;;; Concatenation.

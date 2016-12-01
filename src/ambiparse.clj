@@ -11,6 +11,8 @@
 
 ;;; Primitives.
 
+(def eof `eof)
+
 (defn lit [x]
   (with-meta (list `lit x)
              {::a/head-fail #(not= % x)}))

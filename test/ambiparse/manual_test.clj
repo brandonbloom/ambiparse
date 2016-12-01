@@ -48,6 +48,9 @@
   (party (a/cat (a/* \x) (a/? \x)) "xx")
   (party (a/cat (a/greedy (a/* \x)) (a/? \x)) "xxxxx")
 
+  (party a/eof "")
+  (party (a/cat \x a/eof) "x")
+
   (def A (a/alt \a (a/cat \a #'A)))
   (party A "aaaa")
 
