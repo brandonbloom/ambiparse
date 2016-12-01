@@ -13,7 +13,7 @@
   (if (sequential? pat)
     (case (first pat)
       ambiparse/lit (list* 'a/lit (second pat))
-      ambiparse/-pred (list* 'a/pred (second pat))
+      ambiparse/-pred (list 'a/pred (second pat))
       ambiparse/cat (list* 'a/cat (map unform (next pat)))
       ambiparse/alt (list* 'a/alt (map unform (next pat)))
       ambiparse/label (list 'a/label (second pat) (-> pat (nth 2) unform))
@@ -22,13 +22,15 @@
       ambiparse/* (list 'a/* (-> pat second unform))
       ambiparse/? (list 'a/? (-> pat second unform))
       ambiparse/-filter (list 'a/filter (second pat) (-> pat (nth 2) unform))
-      ambiparse/-prefer (list 'a/prefer (second pat) (-> pat (nth 2) unform)))
+      ambiparse/-prefer (list 'a/prefer (second pat) (-> pat (nth 2) unform))
+      ambiparse/scope (list 'a/scope (second pat)))
     pat))
 
 (defn edge-label [x]
   (if x
     (str (-> x :prefix ::a/begin :idx) " - " (-> x :prefix ::a/end :idx) "\n"
          "pre: " (-> x :prefix ::a/value pps)
+         "env " (-> x :prefix ::a/env pps)
          (when-let [cont (:continue x)]
            (str "cont: " (->> cont (map unform) pps))))
     ""))
@@ -39,16 +41,18 @@
         (swap! ids assoc k id)
         id)))
 
-(defn node-label [[i pat tail?]]
+(defn node-label [[i pat tail? env]]
   (binding [*print-level* 3]
-    (str i " " (-> pat unform pr-str))))
+    (str i " " (-> pat unform pr-str) \newline
+         "env: " (pps env))))
 
 (defn to-dorothy [g]
   (let [ids (atom {})]
      (for [[i pats] (map vector (range) g)
-           [pat nodes] pats
-           [tail? {:keys [edges]}] nodes
-           :let [k [i pat tail?]
+           [pat tails] pats
+           [tail? envs] tails
+           [env {:keys [edges]}] envs
+           :let [k [i pat tail? env]
                  src-id (identify ids k)]]
        ;; Nodes.
        (list [src-id {:label (node-label k)

@@ -1,14 +1,17 @@
 # Ambiparse
 
-Ambiparse is an embedded Clojure DSL that provides generalized context-free
-grammar parsing with disambiguation filters, semantic actions, and a rich
-standard library.
+Ambiparse is an embedded Clojure DSL that provides generalized, adaptive,
+context-free grammar parsing with disambiguation filters, semantic actions,
+and a rich standard library.
 
 ## Overview
 
 Generalized context-free grammars means: all context free grammars are
 supported, including both left and right recursive grammars. The parser is
 capable of returning a parse forest of ambiguous parses.
+
+Adaptive means that grammar productions can be added or removed during
+parsing.
 
 Disambiguation filters are a principled approach to eliminating ambiguity
 from context free grammars. Examples include declarative operator associativity
@@ -37,6 +40,7 @@ Note that performance is expectedly awful. This too may never change.
 - [Disambiguation Filters for Scannerless Generalized LR Parsers][6]
   by M.G.J. van den Brand et al.
 - [Faster, Practical GLL Parsing][7] by Afroozeh and Izmaylova.
+- [Recursive Adaptable Grammars][9] by John Shutt.
 
 ## Acknowledgements
 
@@ -60,3 +64,4 @@ your option) any later version.
 [6]: http://www.st.ewi.tudelft.nl/~eelco/papers/BSVV02.pdf
 [7]: http://oai.cwi.nl/oai/asset/24026/24026B.pdf
 [8]: ./src/ambiparse.clj
+[9]: http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.45.2424&rep=rep1&type=pdf

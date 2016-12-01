@@ -8,3 +8,5 @@
 
 (defn comparator-key [f]
   (comparator #(compare-key f %1 %2)))
+
+(def conjs (fnil conj #{}))
