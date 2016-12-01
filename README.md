@@ -9,12 +9,12 @@ Ambiparse is capable of parsing any context free language, including
 both left-and-right recursive grammars, as well as ambiguous grammars. The
 parser is capable of returning a parse tree for ambiguous parses. Furthermore,
 grammar productions can be modified during parsing, allowing langauges to
-express arbitrary syntax extensions.
+express arbitrary syntax extensions. This means that the parser is actually
+capable of parsing many context-sensitive grammars as well.
 
 Ambiguity can be reduced or eliminated from grammars with "disambiguation
-filters", which allow for declarative operator associativity and precedence,
-as well as filtering by arbitrary predicates. This means that the parser is
-actually capable of parsing many context-sensitive grammars as well.
+filters", which allow for declarative operator associativity and precedence, as
+well as filtering by arbitrary predicates.
 
 Being an embedded DSL enables inline semantic actions. Semantic actions can
 rewrite _concrete_ syntax trees at parse time in to arbitrary _abstract_
