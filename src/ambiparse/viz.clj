@@ -63,7 +63,7 @@
        (list [src-id {:label (node-label k)
                       :penwidth (if tail? 3 1)}]
              ;; Position edge.
-             [(str "pos:i" (-> k :ctx :i)) src-id]
+             [(str "pos:i" i) src-id {:headlabel (str i)}]
              ;; Edges.
              (for [[dst decorators] edges
                    :let [dst-id (identify ids dst)]
