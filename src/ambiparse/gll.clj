@@ -648,7 +648,7 @@
       (pump))
     (finally
       (log 'final-state= (state))
-      ;(ambiparse.viz/show! graph)
+      (ambiparse.viz/show! (state))
       )))
 
 (defn with-run-fn [pat s f]

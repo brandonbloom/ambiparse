@@ -41,24 +41,34 @@
         (swap! ids assoc k id)
         id)))
 
-(defn node-label [{:keys [i pat tail? env]}]
+(defn node-label [{:keys [pat tail? env]}]
   (binding [*print-level* 3]
-    (str i " " (-> pat unform pr-str) \newline
+    (str (-> pat unform pr-str) \newline
          "env: " (pps env))))
 
-(defn to-dorothy [g]
+(defn pos-node [input]
+  (let [label (->> input count range
+                   (map #(str "<i" % "> " %))
+                   (interpose " | ")
+                   (apply str))]
+  ["pos" {:shape "record" :label label}]))
+
+(defn to-dorothy [{:keys [graph input]}]
   (let [ids (atom {})]
-     (for [[i ks] (map vector (range) g)
+    [(pos-node input)
+     (for [[i ks] (map vector (range) graph)
            [{:keys [tail?] :as k} {:keys [edges]}] ks
            :let [src-id (identify ids k)]]
        ;; Nodes.
        (list [src-id {:label (node-label k)
                       :penwidth (if tail? 3 1)}]
+             ;; Position edge.
+             [(str "pos:i" (-> k :ctx :i)) src-id]
              ;; Edges.
              (for [[dst decorators] edges
                    :let [dst-id (identify ids dst)]
                    decorator decorators]
-               [src-id dst-id {:label (edge-label decorator)}])))))
+               [src-id dst-id {:label (edge-label decorator)}])))]))
 
-(defn show! [g]
-  (-> g to-dorothy d/digraph d/dot d/show!))
+(defn show! [state]
+  (-> state to-dorothy d/digraph d/dot d/show!))
