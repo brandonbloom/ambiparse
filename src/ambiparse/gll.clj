@@ -379,22 +379,28 @@
 
 ;;; Alternation.
 
-(defmethod init 'ambiparse/alt
-  [{:keys [i tail? env], [_ & pats] :pat, :as k}]
+(defn init-alt [{:keys [i tail? env] :as k} pats]
   (doseq [pat pats]
     (add-edge i pat tail? env k nil)))
+
+(defmethod init 'ambiparse/alt
+  [{[_ & pats] :pat, :as k}]
+  (init-alt k pats))
 
 (defmethod passed 'ambiparse/alt [k t]
   (pass-child k t))
 
-(defmethod -failure 'ambiparse/alt
-  [{:keys [i tail? env], [_ & pats] :pat}]
+(defn alt-failure
+  [{:keys [i tail? env]} pats]
   (let [errs (->> pats (map #(failure (Key. i % tail? env))) (remove nil?))
         pos (->> errs (rightmost ::a/pos) ::a/pos)
         errs (filter #(= (::a/pos %) pos) errs)]
     (cond
       (next errs) {::a/pos (pos-at i) ::a/alts (set errs)}
       (seq errs) (first errs))))
+
+(defmethod -failure 'ambiparse/alt [{[_ & pats] :pat, :as k}]
+  (alt-failure k pats))
 
 
 ;;; Repetition.
@@ -494,19 +500,20 @@
 
 ;;; Indirection.
 
+(defn var-alts [var env]
+  (conj (env var #{}) @var))
+
 (defmethod init clojure.lang.Var
-  [{:keys [i pat tail? env] :as k}]
-  (let [p @pat
-        p (if (env pat) (list* `a/alt p (env pat)) p)]
-    (add-edge i p tail? env k nil)))
+  [{:keys [pat env] :as k}]
+  (init-alt k (var-alts pat env)))
 
 (defmethod passed clojure.lang.Var
-  [{:keys [i pat tail? env] :as k} t]
+  [{:keys [pat] :as k} t]
   (pass-child k (assoc t ::a/var pat)))
 
 (defmethod -failure clojure.lang.Var
-  [{:keys [i pat tail? env]}]
-  (some-> (failure (Key. i @pat tail? env))
+  [{:keys [pat env] :as k}]
+  (some-> (alt-failure k (var-alts pat env))
           (assoc ::a/var pat)))
 
 
