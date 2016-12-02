@@ -31,6 +31,7 @@
   (party (a/alt \x \y) "z")
   (party (a/alt (a/cat \x \y) \z) "xo")
   (party (a/cat (a/alt \a (a/cat (a/alt \b \x)))) "x")
+  (party (a/cat \a (a/alt \x \y) \b \b) "axbb")
   (party (a/* \x) "")
   (party (a/* \x) "x")
   (party (a/* \x) "xx")
@@ -68,10 +69,19 @@
   (party (a/remove (constantly true) \x) "x")
   (party (a/remove (constantly false) \x) "x")
 
+  (def X (a/alt \x #'X))
+  (party X "x")
+
   (def X (a/alt \x (a/cat) (a/cat #'X #'X)))
   (party X "xxx") ;XXX infinite loop on epsilon!
   (party (a/right (a/cat X X)) "xxx")
   (party (a/left (a/cat X X)) "xxx")
+
+  (def Y (a/cat #'Y))
+  (party #'Y "")
+
+  (def Z (a/alt (a/cat #'Z #'Z) \z))
+  (party #'Z "zz")
 
   (binding [gll/breaks [0 3 7]]
     (doseq [i (range 9)]

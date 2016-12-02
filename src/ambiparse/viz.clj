@@ -48,7 +48,7 @@
 
 (defn pos-node [input]
   (let [label (->> input count range
-                   (map #(str "<i" % "> " %))
+                   (map #(str "<i" % "> " % " " (nth input %)))
                    (interpose " | ")
                    (apply str))]
   ["pos" {:shape "record" :label label}]))
@@ -57,13 +57,14 @@
   (let [ids (atom {})]
     [(pos-node input)
      (for [[i ks] (map vector (range) graph)
-           [{:keys [tail?] :as k} {:keys [edges]}] ks
-           :let [src-id (identify ids k)]]
+           [k {:keys [edges]}] ks
+           :let [{:keys [tail?]} (:ctx k)
+                 src-id (identify ids k)]]
        ;; Nodes.
        (list [src-id {:label (node-label k)
                       :penwidth (if tail? 3 1)}]
              ;; Position edge.
-             [(str "pos:i" i) src-id {:headlabel (str i)}]
+             [(str "pos:i" i) src-id {:headlabel (str i) :style "dotted"}]
              ;; Edges.
              (for [[dst decorators] edges
                    :let [dst-id (identify ids dst)]
