@@ -75,13 +75,15 @@
 (s/def ::a/begin ::pos)
 (s/def ::a/end ::pos)
 (s/def ::a/children (s/coll-of ::tree :kind vector?))
+(s/def ::a/pattern ::pattern)
+(s/def ::a/matched (s/coll-of key? :kind set?))
 (s/def ::a/structure ::pattern)
 (s/def ::a/elements (s/coll-of ::tree :kind vector?))
 (s/def ::a/env ::env)
 (s/def ::a/continue (s/coll-of ::pattern))
 
 (s/def ::tree
-  (s/keys :req [::a/begin ::a/end ::a/value ::a/env]
+  (s/keys :req [::a/begin ::a/end ::a/value ::a/env ::a/pattern ::a/matched]
           :opt [::a/children ::a/structure ::a/elements ::a/continue]))
 
 (defn scan-breaks [i]
@@ -233,7 +235,7 @@
 (defn pass [{:keys [pat ctx] :as k} t]
   (when (or (not (.tail? ^Context ctx))
             (= (-> t ::a/end :idx) (count input)))
-    (let [t (assoc t ::a/pattern pat)
+    (let [t (-> t (assoc ::a/pattern pat) (update ::a/matched conjs k))
           n (get-node k)]
       (when-not (get-in n [:generated t])
         (change! graph update-in (conj (node-path k) :generated) conjs t)
@@ -613,7 +615,8 @@
     :init (init (.pat k) (.ctx k) k)
     :pass (let [[t] args
                 n (get-node k)]
-            (when-not (get-in n [:received t])
+            (when-not (or (get-in n [:received t])
+                          (contains? (::a/matched t) k))
               (passed (.pat k) (.ctx k) k t)
               (change! graph update-in (conj (node-path k) :received)
                        conjs t)))))
@@ -648,7 +651,7 @@
       (pump))
     (finally
       (log 'final-state= (state))
-      (ambiparse.viz/show! (state))
+      ;(ambiparse.viz/show! (state))
       )))
 
 (defn with-run-fn [pat s f]
