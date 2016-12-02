@@ -51,6 +51,18 @@
    :queue queue
    :fuel fuel})
 
+(defrecord Context [^int i, ^boolean tail?, env])
+
+(defn context? [x]
+  (instance? Context x))
+
+(def root-ctx (Context. 0 true {}))
+
+(defrecord Key [pat, ^Context ctx])
+
+(defn key? [x]
+  (instance? Key x))
+
 (s/def ::pos (s/keys :req-un [::idx] :opt-un [::line ::col]))
 (s/def ::line integer?)
 (s/def ::col integer?)
@@ -71,18 +83,6 @@
 (s/def ::tree
   (s/keys :req [::a/begin ::a/end ::a/value ::a/env]
           :opt [::a/children ::a/structure ::a/elements ::a/continue]))
-
-(defrecord Context [^int i, ^boolean tail?, env])
-
-(defn context? [x]
-  (instance? Context x))
-
-(def root-ctx (Context. 0 true {}))
-
-(defrecord Key [pat, ^Context ctx])
-
-(defn key? [x]
-  (instance? Key x))
 
 (defn scan-breaks [i]
   (when (< traveled i)
