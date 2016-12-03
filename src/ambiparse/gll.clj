@@ -90,7 +90,7 @@
 (s/def ::tree
   (s/merge ::passed
            (s/keys :req [::a/pattern ::a/matched]
-                         :opt [::a/elements ::a/continue])))
+                   :opt [::a/elements ::a/continue])))
 
 (defn scan-breaks [i]
   (when (< traveled i)
@@ -195,7 +195,7 @@
         (send [:init k]))
       k)))
 
-(s/def ::prefix ::tree)
+(s/def ::prefix ::passed)
 (s/def ::continue (s/nilable (s/coll-of ::pattern :kind seq?)))
 
 (s/def ::decorator
@@ -469,9 +469,9 @@
 ;;; Optional.
 
 (defmethod init 'ambiparse/? [[_ pat] ctx k]
-  (let [t (empty-in ctx)]
+  (let [t (assoc (empty-in ctx) ::a/value nil)]
     (pass k t)
-    (add-edge pat ctx k {:prefix t})))
+    (add-edge pat ctx k nil)))
 
 (defmethod passed 'ambiparse/? [pat ctx k t]
   (pass k t))
@@ -675,8 +675,11 @@
 (defmacro with-run [pat s opts & body]
   `(with-run-fn ~pat ~s ~opts (fn [] ~@body)))
 
+(defn trees []
+  (-> root get-node :generated))
+
 (defn parses []
-  (->> root get-node :generated (map ::a/value)))
+  (map ::a/value (trees)))
 
 (defn parse []
   (let [ps (distinct (parses))]

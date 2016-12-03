@@ -3,7 +3,18 @@
             [ambiparse :as a]
             [ambiparse.util :refer :all]))
 
+;; Non-recursive var.
 (def XS (a/+ \x))
+
+;; Simple left and right recursion.
+(def L (a/cat (a/? #'L) \x))
+(def R (a/cat \x (a/? #'R)))
+
+;; Various other infinitely recursive grammars.
+(def A (a/alt \a #'A))
+(def B (a/alt \b (a/cat #'B #'B)))
+(def C (a/cat #'C))
+(def D (a/alt (a/cat #'D #'D) \d))
 
 (deftest parses-test
   (are [pat s ts] (= (set (a/parses pat s {:fuel 500})) ts)
@@ -44,28 +55,36 @@
     (a/+ \x) "x" #{[\x]}
     (a/+ \x) "xx" #{[\x \x]}
 
-    (a/? \x) "" #{[]}
-    (a/? \x) "x" #{[\x]}
+    (a/? \x) "" #{nil}
+    (a/? \x) "x" #{\x}
 
-    (a/cat (a/* \x) (a/? \x)) "xxx" #{[[\x \x \x] []] [[\x \x] [\x]]}
+    (a/cat (a/* \x) (a/? \x)) "xxx" #{[[\x \x \x] nil] [[\x \x] \x]}
 
     #'XS "xx" #{[\x \x]}
 
+    ;L "xxx" #{[
+    R "xxx" #{[\x [\x [\x nil]]]}
+
+    #'A "a" #{\a}
+    #'B "bb" #{[\b \b]}
+    #'C "c" #{}
+    #'D "dd" #{[\d \d]}
+
     (a/prefer (constantly 0) \x) "x" #{\x}
-    (a/cat (a/greedy (a/* \x)) (a/? \x)) "xxx" #{[[\x \x \x] []]}
+    (a/cat (a/greedy (a/* \x)) (a/? \x)) "xxx" #{[[\x \x \x] nil]}
     ;;XXX prefer test cycle
 
     (a/cat (a/filter #(>= (a/length %) 2)
                      (a/* \x))
            (a/? \x))
     "xxx"
-    #{[[\x \x] [\x]] [[\x \x \x] []]}
+    #{[[\x \x] \x] [[\x \x \x] nil]}
 
     (a/cat (a/remove #(< (a/length %) 2)
                      (a/* \x))
            (a/? \x))
     "xxx"
-    #{[[\x \x] [\x]] [[\x \x \x] []]}
+    #{[[\x \x] \x] [[\x \x \x] nil]}
 
     (a/filter #(= (::a/value %) \x) \x) "x" #{\x}
 
