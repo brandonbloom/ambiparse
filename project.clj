@@ -7,4 +7,8 @@
   :profiles {:dev {:dependencies [[dorothy-bbloom "0.0.9-SNAPSHOT"]
                                   [fipp "0.6.7"]]
                    :resource-paths ["test/resources"]}}
-  :global-vars {*warn-on-reflection* true})
+  :global-vars {*warn-on-reflection* true
+                *print-length* 30
+                *print-level* 10
+                ;*unchecked-math* :warn-on-boxed
+                })

@@ -52,7 +52,7 @@
    :queue queue
    :fuel fuel})
 
-(defrecord Context [^int i, ^boolean tail?, env])
+(defrecord Context [^long i, ^boolean tail?, env])
 
 (defn context? [x]
   (instance? Context x))
@@ -92,26 +92,27 @@
            (s/keys :req [::a/pattern ::a/matched]
                    :opt [::a/elements ::a/continue])))
 
-(defn scan-breaks [i]
-  (when (< traveled i)
-    (doseq [n (range traveled (min (inc i) (dec (count input))))]
-      (when (and (= (nth input i) \newline)
-                 breaks
-                 (< (peek breaks) n))
-        (change! breaks conj n)))
-    (set! traveled i)))
+(defn scan-breaks [^long i]
+  (let [lt (long traveled)]
+    (when (< lt i)
+      (doseq [^long n (range lt (min (inc i) (dec (count input))))]
+        (when (and (= (nth input i) \newline)
+                   breaks
+                   (< (peek breaks) n))
+          (change! breaks conj n)))
+      (set! traveled i))))
 
-(defn input-at [i]
+(defn input-at [^long i]
   (if (< i (count input))
     (do (scan-breaks i)
         (nth input i))
     ::a/eof))
 
-(defn pos-at [i]
+(defn pos-at [^long i]
   (scan-breaks i)
   (if breaks
     ;;TODO: Binary search?
-    (reduce-kv (fn [res n b]
+    (reduce-kv (fn [res, ^long n, ^long b]
                  (if (<= i b)
                    (reduced res)
                    {:idx i :line (inc n) :col (- i b -1)}))
@@ -289,7 +290,7 @@
 
 ;;; Terminals.
 
-(defn lit-init [i c {:keys [ctx] :as k}]
+(defn lit-init [^long i, c, {:keys [ctx] :as k}]
   (let [x (input-at i)]
     (when (= x c)
       (pass k {::a/begin (pos-at i)
@@ -297,7 +298,7 @@
                ::a/value x
                ::a/env (.env ^Context ctx)}))))
 
-(defn lit-failure [i c]
+(defn lit-failure [^long i, c]
   (let [x (input-at i)]
     (when (not= x c)
       {::a/pos (pos-at i)

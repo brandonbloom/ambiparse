@@ -15,3 +15,4 @@ Perf Ideas
   - avoid nodes for constant terminals
   - records/protocols for pattern objects
   - record for concrete syntax trees
+  - can tail contexts be generalized to tail-fail?
