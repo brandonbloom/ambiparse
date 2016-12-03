@@ -47,7 +47,7 @@
 (comment
 
   (defn party [s]
-    (fipp.edn/pprint (a/parse! Commands s)))
+    (fipp.edn/pprint (a/parse! Commands s {:viz true})))
 
   (party "a +b b")
 

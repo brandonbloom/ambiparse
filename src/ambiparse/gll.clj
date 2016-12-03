@@ -203,12 +203,12 @@
           :opt-un [::continue]))
 
 (s/fdef decorate
-  :args (s/cat :pat ::pattern, :t ::tree, ::d (s/nilable ::decorator))
+  :args (s/cat :t ::tree, ::d (s/nilable ::decorator))
   :ret ::tree)
 
 (defn decorate
   "Applies a transformation to trees flowing along an edge."
-  [pat t {:as d :keys [prefix continue]}]
+  [t {:as d :keys [prefix continue]}]
   (if d
     (merge prefix t
            {::a/begin (::a/begin prefix)
@@ -233,7 +233,7 @@
         (change! graph update-in (conj (node-path k) :edges dst) conjs d)
         ;; Replay previously generated parses.
         (doseq [t (:generated n)]
-          (send [:pass dst (decorate pat t d)]))))))
+          (send [:pass dst (decorate t d)]))))))
 
 (s/fdef pass
   :args (s/cat :k key?, :t ::passed))
@@ -247,7 +247,7 @@
         (change! graph update-in (conj (node-path k) :generated) conjs t)
         (doseq [[dst ds] (:edges n)
                 d ds]
-          (send [:pass dst (decorate pat t d)]))))))
+          (send [:pass dst (decorate t d)]))))))
 
 (defn pass-child [k t]
   (pass k (assoc t ::a/children [t])))
