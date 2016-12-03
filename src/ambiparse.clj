@@ -92,17 +92,23 @@
 
 ;;; Execution.
 
-(defn parses [pat s]
-  (gll/with-run pat s
-    (gll/parses)))
+(defn parses
+  ([pat s] (parses pat s {}))
+  ([pat s opts]
+   (gll/with-run pat s opts
+     (gll/parses))))
 
-(defn parse [pat s]
-  (gll/with-run pat s
-    (gll/parse)))
+(defn parse
+  ([pat s] (parse pat s {}))
+  ([pat s opts]
+   (gll/with-run pat s opts
+     (gll/parse))))
 
-(defn parse! [pat s]
-  (gll/with-run pat s
-    (gll/parse!)))
+(defn parse!
+  ([pat s] (parse! pat s {}))
+  ([pat s opts]
+   (gll/with-run pat s opts
+     (gll/parse!))))
 
 
 ;;; Library.

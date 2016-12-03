@@ -1,7 +1,8 @@
 (ns ambiparse.gll
   (:refer-clojure :exclude [send])
   (:require [clojure.spec :as s]
-            [ambiparse.util :refer :all]))
+            [ambiparse.util :refer :all]
+            [ambiparse.viz :as viz]))
 
 (create-ns 'ambiparse)
 (alias 'a 'ambiparse)
@@ -35,9 +36,9 @@
 
 ;;; Debug state.
 (def trace false)
-(def ^:dynamic fuel
-  "Steps to perform before giving up. Set to 0 to disable."
-  0)
+(def ^{:dynamic true
+       :doc "Steps to perform before giving up. Set to 0 to disable."}
+  fuel)
 
 (defmacro log [& xs]
   (require 'fipp.edn)
@@ -70,7 +71,7 @@
 
 (s/def ::env (s/map-of var? (s/coll-of ::pat, :kind set?)))
 
-(s/def ::pattern any?)
+(s/def ::pattern some?)
 
 (s/def ::a/begin ::pos)
 (s/def ::a/end ::pos)
@@ -82,9 +83,14 @@
 (s/def ::a/env ::env)
 (s/def ::a/continue (s/coll-of ::pattern))
 
+(s/def ::passed
+  (s/keys :req [::a/begin ::a/end ::a/value ::a/env]
+          :opt [::a/children ::a/structure]))
+
 (s/def ::tree
-  (s/keys :req [::a/begin ::a/end ::a/value ::a/env ::a/pattern ::a/matched]
-          :opt [::a/children ::a/structure ::a/elements ::a/continue]))
+  (s/merge ::passed
+           (s/keys :req [::a/pattern ::a/matched]
+                         :opt [::a/elements ::a/continue])))
 
 (defn scan-breaks [i]
   (when (< traveled i)
@@ -215,7 +221,7 @@
     t))
 
 (s/fdef add-edge
-  :args (s/cat :pat any?
+  :args (s/cat :pat some?
                :ctx context?
                :dst key?
                :d (s/nilable ::decorator)))
@@ -230,7 +236,7 @@
           (send [:pass dst (decorate pat t d)]))))))
 
 (s/fdef pass
-  :args (s/cat :k key?, :t ::tree))
+  :args (s/cat :k key?, :t ::passed))
 
 (defn pass [{:keys [pat ctx] :as k} t]
   (when (or (not (.tail? ^Context ctx))
@@ -646,15 +652,10 @@
 (defn run []
   (let [{:keys [pat ctx]} root]
     (add-node pat ctx))
-  (try
-    (while (seq queue)
-      (pump))
-    (finally
-      (log 'final-state= (state))
-      ;(ambiparse.viz/show! (state))
-      )))
+  (while (seq queue)
+    (pump)))
 
-(defn with-run-fn [pat s f]
+(defn with-run-fn [pat s opts f]
   (binding [input s
             root (Key. pat root-ctx)
             graph []
@@ -662,18 +663,20 @@
             buffered #{}
             breaks (when (string? s) [0])
             traveled 0
-            fuel fuel]
-    (run)
+            fuel (opts :fuel 0)]
+    (try
+      (run)
+      (finally
+        (log 'final-state= (state))
+        (when (:viz opts)
+          (viz/show! (state)))))
     (f)))
 
-(defmacro with-run [pat s & body]
-  `(with-run-fn ~pat ~s (fn [] ~@body)))
-
-(defn trees []
-  (-> root get-node :generated))
+(defmacro with-run [pat s opts & body]
+  `(with-run-fn ~pat ~s ~opts (fn [] ~@body)))
 
 (defn parses []
-  (map ::a/value (trees)))
+  (->> root get-node :generated (map ::a/value)))
 
 (defn parse []
   (let [ps (distinct (parses))]

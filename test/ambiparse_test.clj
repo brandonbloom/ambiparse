@@ -6,7 +6,7 @@
 (def XS (a/+ \x))
 
 (deftest parses-test
-  (are [pat s ts] (= (set (a/parses pat s)) ts)
+  (are [pat s ts] (= (set (a/parses pat s {:fuel 500})) ts)
 
     \x "x" #{\x}
     \y "x" #{}
