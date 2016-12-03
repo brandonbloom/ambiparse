@@ -5,7 +5,7 @@
             [ambiparse-test :refer :all]))
 
 (defn party [pat s]
-  (gll/with-run pat s {:fuel 300 :viz true}
+  (gll/with-run pat s {:fuel 100 :viz true}
     (pprint {;:trees (gll/trees)
              :parses (gll/parses)
              :failure (gll/failure)}

@@ -77,7 +77,7 @@
 (s/def ::a/end ::pos)
 (s/def ::a/children (s/coll-of ::tree :kind vector?))
 (s/def ::a/pattern ::pattern)
-(s/def ::a/matched (s/coll-of key? :kind set?))
+(s/def ::a/matched (s/map-of key? any?))
 (s/def ::a/structure ::pattern)
 (s/def ::a/elements (s/coll-of ::tree :kind vector?))
 (s/def ::a/env ::env)
@@ -241,7 +241,8 @@
 (defn pass [{:keys [pat ctx] :as k} t]
   (when (or (not (.tail? ^Context ctx))
             (= (-> t ::a/end :idx) (count input)))
-    (let [t (-> t (assoc ::a/pattern pat) (update ::a/matched conjs k))
+    (let [v (::a/value t)
+          t (-> t (assoc ::a/pattern pat) (update-in [::a/matched k] conjs v))
           n (get-node k)]
       (when-not (get-in n [:generated t])
         (change! graph update-in (conj (node-path k) :generated) conjs t)
@@ -619,10 +620,10 @@
   (log 'exec msg)
   (case op
     :init (init (.pat k) (.ctx k) k)
-    :pass (let [[t] args
+    :pass (let [[{v ::a/value, :as t}] args
                 n (get-node k)]
             (when-not (or (get-in n [:received t])
-                          (contains? (::a/matched t) k))
+                          (get-in t [::a/matched k v]))
               (passed (.pat k) (.ctx k) k t)
               (change! graph update-in (conj (node-path k) :received)
                        conjs t)))))
