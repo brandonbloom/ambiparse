@@ -30,7 +30,8 @@
   (if x
     (str (-> x :prefix ::a/begin :idx) " - " (-> x :prefix ::a/end :idx) "\n"
          "pre: " (-> x :prefix ::a/value pps)
-         "env " (-> x :prefix ::a/env pps)
+         (when (-> x :prefix ::a/env seq)
+           (str "env: " (-> x :prefix ::a/env pps)))
          (when-let [cont (:continue x)]
            (str "cont: " (->> cont (map unform) pps))))
     ""))
@@ -41,10 +42,12 @@
         (swap! ids assoc k id)
         id)))
 
-(defn node-label [{:keys [pat tail? env]}]
-  (binding [*print-level* 3]
-    (str (-> pat unform pr-str) \newline
-         "env: " (pps env))))
+(defn node-label [{:keys [pat ctx]}]
+  (let [{:keys [env]} ctx]
+    (binding [*print-level* 3]
+      (str (-> pat unform pr-str) \newline
+           (when (seq env)
+             (str "env: " (pps env)))))))
 
 (defn pos-node [input]
   (let [label (->> input count range
