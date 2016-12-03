@@ -16,6 +16,8 @@
 (def C (a/cat #'C))
 (def D (a/alt (a/cat #'D #'D) \d))
 
+;TODO: Test infinite recursion involving eof and espilon, ie (a/cat).
+
 (deftest parses-test
   (are [pat s ts] (= (set (a/parses pat s {:fuel 500})) ts)
 
@@ -62,7 +64,7 @@
 
     #'XS "xx" #{[\x \x]}
 
-    ;L "xxx" #{[
+    L "xxx" #{[[[nil \x] \x] \x]}
     R "xxx" #{[\x [\x [\x nil]]]}
 
     #'A "a" #{\a}

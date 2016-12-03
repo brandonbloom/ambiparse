@@ -1,11 +1,12 @@
 (ns ambiparse.manual-test
   (:require [fipp.edn :refer [pprint]]
             [ambiparse :as a]
-            [ambiparse.gll :as gll]))
+            [ambiparse.gll :as gll]
+            [ambiparse-test :refer :all]))
 
 (defn party [pat s]
-  (gll/with-run pat s
-    (pprint {:trees (gll/trees)
+  (gll/with-run pat s {:fuel 300 :viz true}
+    (pprint {;:trees (gll/trees)
              :parses (gll/parses)
              :failure (gll/failure)}
             {:width 160})))
@@ -52,8 +53,7 @@
   (party a/eof "")
   (party (a/cat \x a/eof) "x")
 
-  (def A (a/alt \a (a/cat \a #'A)))
-  (party A "aaaa")
+  (party XS "xxxx")
 
   (party \x "y")
   (party (a/cat \x \y) "zy")
@@ -69,27 +69,20 @@
   (party (a/remove (constantly true) \x) "x")
   (party (a/remove (constantly false) \x) "x")
 
-  (def A (a/alt \a #'A))
   (party A "a")
 
-  (def B (a/alt \b (a/cat #'B #'B)))
   (party B "bbb")
   (party (a/right (a/cat B B)) "bbb")
   (party (a/left (a/cat B B)) "bbb")
 
-  (def C (a/cat #'C))
   (party #'C "")
 
-  (def D (a/alt (a/cat #'D #'D) \d))
   (party #'D "dd")
 
-  (def E (a/alt \e (a/cat) (a/cat #'E #'E)))
   (party #'E "ee")
 
-  (def L (a/cat (a/? #'L) \x))
   (party L "xxx")
 
-  (def R (a/cat \x (a/? #'R)))
   (party R "xxx")
 
   (binding [gll/breaks [0 3 7]]
