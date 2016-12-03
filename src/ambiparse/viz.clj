@@ -64,7 +64,9 @@
        (list [src-id {:label (node-label k)
                       :penwidth (if tail? 3 1)}]
              ;; Position edge.
-             [(str "pos:i" i) src-id {:headlabel (str i) :style "dotted"}]
+             [(str "pos:i" i) src-id {:headlabel (str i)
+                                      :style "dotted"
+                                      :arrowhead "none"}]
              ;; Edges.
              (for [[dst decorators] edges
                    :let [dst-id (identify ids dst)]
@@ -72,4 +74,7 @@
                [src-id dst-id {:label (edge-label decorator)}])))]))
 
 (defn show! [state]
-  (-> state to-dorothy d/digraph d/dot d/show!))
+  (-> state to-dorothy d/digraph d/dot
+      (d/show! {:frame :ambiparse
+                :frame-width 1280
+                :frame-height 800})))
