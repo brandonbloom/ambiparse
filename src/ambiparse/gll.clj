@@ -65,19 +65,21 @@
   (instance? Key x))
 
 (s/def ::pos (s/keys :req-un [::idx] :opt-un [::line ::col]))
-(s/def ::line integer?)
-(s/def ::col integer?)
-(s/def ::idx integer?)
+(s/def ::line int?)
+(s/def ::col int?)
+(s/def ::idx int?)
 
 (s/def ::env (s/every-kv var? (s/every ::pat, :kind set?)))
 
 (s/def ::pattern some?)
 
+(s/def ::span (s/cat :begin ::idx :end ::idx))
+
 (s/def ::a/begin ::pos)
 (s/def ::a/end ::pos)
 (s/def ::a/children (s/every ::tree :kind vector?))
 (s/def ::a/pattern ::pattern)
-(s/def ::a/matched (s/every-kv var? any?))
+(s/def ::a/matched (s/every-kv var? (s/every ::span :kind set?)))
 (s/def ::a/structure ::pattern)
 (s/def ::a/elements (s/every ::tree :kind vector?))
 (s/def ::a/env ::env)
@@ -544,9 +546,9 @@
 
 (defmethod passed clojure.lang.Var
   [pat ctx k t]
-  (let [v (::a/value t)]
-    (when-not (get-in t [::a/matched pat v])
-      (pass-child k (update-in t [::a/matched pat] conjs v)))))
+  (let [span [(-> t ::a/begin :idx) (-> t ::a/end :idx)]]
+    (when-not (get-in t [::a/matched pat span])
+      (pass-child k (update-in t [::a/matched pat] conjs span)))))
 
 (defmethod -failure clojure.lang.Var
   [pat ctx k]

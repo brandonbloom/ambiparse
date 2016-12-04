@@ -78,8 +78,8 @@
 
     T "" #{[] [[]]}
     U "" #{[[]]}
-    ;V "" #{[nil :eof]}
-    ;W "" #{[nil []]}
+    V "" #{[nil ::a/eof] [[nil ::a/eof] ::a/eof]}
+    W "" #{[nil []] [[nil []] []]}
 
     (a/prefer (constantly 0) \x) "x" #{\x}
     (a/cat (a/greedy (a/* \x)) (a/? \x)) "xxx" #{[[\x \x \x] nil]}
