@@ -19,7 +19,7 @@
 
 (def Command (a/alt #'Atom Add Del Block))
 
-(def Commands (a/interpose \space Command))
+(def Commands (a/interpose* \space Command))
 
 (deftest adaptive-test
   (are [s t] (= (a/parse! Commands s) t)

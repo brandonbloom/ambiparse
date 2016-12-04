@@ -16,7 +16,7 @@
 
 (def Forms
   (a/cat (a/? Space)
-         (a/label :forms (a/interpose Space #'Form))
+         (a/label :forms (a/interpose* Space #'Form))
          (a/? Space)))
 
 (def Digit
