@@ -69,19 +69,19 @@
 (s/def ::col integer?)
 (s/def ::idx integer?)
 
-(s/def ::env (s/map-of var? (s/coll-of ::pat, :kind set?)))
+(s/def ::env (s/every-kv var? (s/every ::pat, :kind set?)))
 
 (s/def ::pattern some?)
 
 (s/def ::a/begin ::pos)
 (s/def ::a/end ::pos)
-(s/def ::a/children (s/coll-of ::tree :kind vector?))
+(s/def ::a/children (s/every ::tree :kind vector?))
 (s/def ::a/pattern ::pattern)
-(s/def ::a/matched (s/map-of key? any?))
+(s/def ::a/matched (s/every-kv key? any?))
 (s/def ::a/structure ::pattern)
-(s/def ::a/elements (s/coll-of ::tree :kind vector?))
+(s/def ::a/elements (s/every ::tree :kind vector?))
 (s/def ::a/env ::env)
-(s/def ::a/continue (s/coll-of ::pattern))
+(s/def ::a/continue (s/every ::pattern))
 
 (s/def ::passed
   (s/keys :req [::a/begin ::a/end ::a/value ::a/env]
@@ -197,7 +197,7 @@
       k)))
 
 (s/def ::prefix ::passed)
-(s/def ::continue (s/nilable (s/coll-of ::pattern :kind seq?)))
+(s/def ::continue (s/nilable (s/every ::pattern :kind seq?)))
 
 (s/def ::decorator
   (s/keys :req-un [::prefix]
