@@ -562,7 +562,6 @@
 
 (defmethod passed 'ambiparse/-prefer
   [[_ _ pat cmp] ctx k t]
-  ;;XXX set exception if cmp fails.
   (let [buffer (:buffer (get-node k))
         buffer* (try-at k
                   (cond
