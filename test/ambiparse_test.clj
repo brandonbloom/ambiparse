@@ -16,7 +16,10 @@
 (def C (a/cat #'C))
 (def D (a/alt (a/cat #'D #'D) \d))
 
-;TODO: Test infinite recursion involving eof and espilon, ie (a/cat).
+;; Infinite zero-width matches.
+(def T (a/* (a/cat)))
+(def U (a/+ (a/cat)))
+(def V (a/cat (a/? #'V) a/eof))
 
 (deftest parses-test
   (are [pat s ts] (= (set (a/parses pat s {:fuel 500})) ts)
@@ -71,6 +74,9 @@
     #'B "bb" #{[\b \b]}
     #'C "c" #{}
     #'D "dd" #{[\d \d]}
+
+    T "" #{[] [[]]}
+    U "" #{[[]]}
 
     (a/prefer (constantly 0) \x) "x" #{\x}
     (a/cat (a/greedy (a/* \x)) (a/? \x)) "xxx" #{[[\x \x \x] nil]}

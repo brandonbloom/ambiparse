@@ -438,12 +438,15 @@
 
 (defn do-rep [[_ pat] ctx k t]
   (pass k t)
-  (let [i (-> t ::a/end :idx)
-        env (::a/env t)]
-    (add-edge pat (Context. i false env) k {:prefix t})))
+  (let [b (-> t ::a/begin :idx)
+        e (-> t ::a/end :idx)]
+    (when (< b e)
+      (add-edge pat (Context. e false (::a/env t)) k {:prefix t}))))
 
-(defmethod init 'ambiparse/* [pat ctx k]
-  (do-rep pat ctx k (empty-in ctx)))
+(defmethod init 'ambiparse/* [[_ pat] ctx k]
+  (let [t (empty-in ctx)]
+    (pass k t)
+    (add-edge pat (assoc ctx :tail? false) k {:prefix t})))
 
 (defmethod init 'ambiparse/+ [[_ pat] ctx k]
   (add-edge pat (assoc ctx :tail? false) k {:prefix (empty-in ctx)}))
