@@ -77,7 +77,7 @@
 (s/def ::a/end ::pos)
 (s/def ::a/children (s/every ::tree :kind vector?))
 (s/def ::a/pattern ::pattern)
-(s/def ::a/matched (s/every-kv key? any?))
+(s/def ::a/matched (s/every-kv var? any?))
 (s/def ::a/structure ::pattern)
 (s/def ::a/elements (s/every ::tree :kind vector?))
 (s/def ::a/env ::env)
@@ -89,8 +89,8 @@
 
 (s/def ::tree
   (s/merge ::passed
-           (s/keys :req [::a/pattern ::a/matched]
-                   :opt [::a/elements ::a/continue])))
+           (s/keys :req [::a/pattern]
+                   :opt [::a/elements ::a/continue ::a/matched])))
 
 (defn scan-breaks [^long i]
   (let [lt (long traveled)]
@@ -243,7 +243,7 @@
   (when (or (not (.tail? ^Context ctx))
             (= (-> t ::a/end :idx) (count input)))
     (let [v (::a/value t)
-          t (-> t (assoc ::a/pattern pat) (update-in [::a/matched k] conjs v))
+          t (assoc t ::a/pattern pat)
           n (get-node k)]
       (when-not (get-in n [:generated t])
         (change! graph update-in (conj (node-path k) :generated) conjs t)
@@ -544,7 +544,9 @@
 
 (defmethod passed clojure.lang.Var
   [pat ctx k t]
-  (pass-child k (assoc t ::a/var pat)))
+  (let [v (::a/value t)]
+    (when-not (get-in t [::a/matched pat v])
+      (pass-child k (update-in t [::a/matched pat] conjs v)))))
 
 (defmethod -failure clojure.lang.Var
   [pat ctx k]
@@ -626,8 +628,7 @@
     :init (init (.pat k) (.ctx k) k)
     :pass (let [[{v ::a/value, :as t}] args
                 n (get-node k)]
-            (when-not (or (get-in n [:received t])
-                          (get-in t [::a/matched k v]))
+            (when-not (get-in n [:received t])
               (passed (.pat k) (.ctx k) k t)
               (change! graph update-in (conj (node-path k) :received)
                        conjs t)))))

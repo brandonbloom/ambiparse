@@ -20,6 +20,7 @@
 (def T (a/* (a/cat)))
 (def U (a/+ (a/cat)))
 (def V (a/cat (a/? #'V) a/eof))
+(def W (a/cat (a/? #'W) (a/cat)))
 
 (deftest parses-test
   (are [pat s ts] (= (set (a/parses pat s {:fuel 500})) ts)
@@ -77,6 +78,8 @@
 
     T "" #{[] [[]]}
     U "" #{[[]]}
+    ;V "" #{[nil :eof]}
+    ;W "" #{[nil []]}
 
     (a/prefer (constantly 0) \x) "x" #{\x}
     (a/cat (a/greedy (a/* \x)) (a/? \x)) "xxx" #{[[\x \x \x] nil]}

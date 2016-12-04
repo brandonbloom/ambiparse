@@ -86,7 +86,8 @@
 
   (party T "")
   (party U "")
-  ;XXX (party V "")
+  (party V "")
+  (party W "")
 
   (binding [gll/breaks [0 3 7]]
     (doseq [i (range 9)]

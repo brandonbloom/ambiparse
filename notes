@@ -10,6 +10,7 @@ Known Issues
   - epsilon infinite loops
   - eof infinite loops
   - bad error messages from nested alts or multiple-rightmost partial parses
+  - * and + do not set ::a/structure
 
 Perf Ideas
   - avoid nodes for constant terminals
