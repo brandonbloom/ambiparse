@@ -79,7 +79,7 @@
 (s/def ::a/end ::pos)
 (s/def ::a/children (s/every ::tree :kind vector?))
 (s/def ::a/pattern ::pattern)
-(s/def ::a/matched (s/every-kv var? (s/every ::span :kind set?)))
+(s/def ::a/matched (s/every-kv ::pattern (s/every ::span :kind set?)))
 (s/def ::a/structure ::pattern)
 (s/def ::a/elements (s/every ::tree :kind vector?))
 (s/def ::a/env ::env)
@@ -242,6 +242,7 @@
   :args (s/cat :k key?, :t ::passed))
 
 (defn pass [{:keys [pat ctx] :as k} t]
+  ;;XXX forward ::a/matched
   (when (or (not (.tail? ^Context ctx))
             (= (-> t ::a/end :idx) (count input)))
     (let [v (::a/value t)
@@ -438,12 +439,20 @@
 
 ;;; Repetition.
 
-(defn do-rep [[_ pat] ctx k t]
-  (pass k t)
+(defn non-rec [pat t]
   (let [b (-> t ::a/begin :idx)
-        e (-> t ::a/end :idx)]
-    (when (< b e)
-      (add-edge pat (Context. e false (::a/env t)) k {:prefix t}))))
+        e (-> t ::a/end :idx)
+        span [b e]]
+    (when-not (get-in t [::a/matched pat span])
+      (update-in t [::a/matched pat] conjs span))))
+
+(defn do-rep [[_ pat :as p] ctx k t]
+  (pass k t)
+  (when-let [t (non-rec pat t)]
+    (let [b (-> t ::a/begin :idx)
+          e (-> t ::a/end :idx)]
+      (when (< b e)
+        (add-edge pat (Context. e false (::a/env t)) k {:prefix t})))))
 
 (defmethod init 'ambiparse/* [[_ pat] ctx k]
   (let [t (empty-in ctx)]
@@ -546,9 +555,8 @@
 
 (defmethod passed clojure.lang.Var
   [pat ctx k t]
-  (let [span [(-> t ::a/begin :idx) (-> t ::a/end :idx)]]
-    (when-not (get-in t [::a/matched pat span])
-      (pass-child k (update-in t [::a/matched pat] conjs span)))))
+  (when-let [t (non-rec pat t)]
+    (pass-child k t)))
 
 (defmethod -failure clojure.lang.Var
   [pat ctx k]
