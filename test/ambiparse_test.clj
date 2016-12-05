@@ -134,7 +134,7 @@
     ;; Lit failure in non-string input.
     (a/lit :x) [:y]
     {::a/expected :x ::a/actual :y
-     ::a/pos {:idx 0}}
+     ::a/pos {:idx 0 :token :y}}
 
     ;; Predicate failed.
     (a/pred even?) [1]
@@ -142,7 +142,7 @@
      ::a/predicate '...
      ::a/expression 'even?
      ::a/actual 1
-     ::a/pos {:idx 0}}
+     ::a/pos {:idx 0 :token 1}}
 
     ;; Failure in element of concatenation.
     (a/cat \x \y) "zy"
@@ -183,7 +183,7 @@
     ;; Rule expression failure.
     (a/rule \x (/ 1 0)) "x"
     {::a/exception "Divide by zero"
-     ::a/pos {:idx 0 :line 1 :col 1}}
+     ::a/pos {:idx 1 :line 1 :col 2}}
 
     ;; Label pattern failure.
     (a/label :foo (a/+ \x)) "y"
@@ -202,7 +202,7 @@
               (a/cat \x \x (a/cat \x)))
     "xxx"
     {::a/exception "whoops"
-     ::a/pos {:idx 0 :line 1 :col 1}}
+     ::a/pos {:idx 3 :line 1 :col 4}}
 
     ;; Prefer pattern failure.
     (a/greedy (a/+ \x)) "y"

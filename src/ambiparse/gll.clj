@@ -477,8 +477,10 @@
 
 (defn rep-failure [[_ pat], ^Context ctx, k]
   (when (.tail? ctx)
-    (let [e (or (-> (rightmost-received k) ::a/end :idx) (.i ctx))
-          ctx* (assoc ctx :i e :tail? false)]
+    (let [[e env] (if-let [t (rightmost-received k)]
+                    [(-> t ::a/end :idx) (::a/env t)]
+                    [(.i ctx) (.env ctx)])
+          ctx* (Context. e false env)]
       (failure (Key. pat ctx*)))))
 
 (defmethod -failure 'ambiparse/* [pat ctx k]
