@@ -77,9 +77,12 @@
 (defmacro filter [f pat]
   `(-filter '~f ~pat ~f))
 
-(defn scope [pat]
-  (with-meta (list `scope pat)
-             {::a/head-fail (-> pat meta ::a/head-fail)}))
+(defn scope
+  ([pat]
+   (with-meta (list `scope pat)
+              {::a/head-fail (-> pat meta ::a/head-fail)}))
+  ([pat & pats]
+   (scope (apply cat pat pats))))
 
 (defn add! [var pat]
   (assert (var? var))
