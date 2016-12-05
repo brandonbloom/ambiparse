@@ -131,6 +131,14 @@
 (defn get-node [^Key k]
   (get-in graph (node-path k)))
 
+(defn rightmost [kw xs]
+  ;XXX return _all_ rightmost, otherwise nested alts mask other alts.
+  (when (seq xs)
+    (apply max-key #(-> % kw :idx) xs)))
+
+(defn rightmost-received [k]
+  (rightmost ::a/end (-> k get-node :received)))
+
 (defn classify [pat]
   (cond
     (sequential? pat) (first pat)
@@ -161,6 +169,10 @@
 
 (def ^:dynamic inside)
 
+;;TODO: Spec failure objects.
+;;TODO: Extend failure objects to include both begin and end instead of just
+;; pos. Begin is where to report error, end how far parser got for sake of
+;; finding the "best" error.
 (s/fdef failure :args (s/alt :root (s/cat) :specific (s/cat :k key?)))
 
 (defn failure
@@ -173,7 +185,9 @@
      (when-not (or (inside k) (-> n :generated seq))
        (binding [inside (conj inside k)]
          (if-let [ex (:exception n)]
-           {::a/exception ex ::a/pos (pos-at (.i ctx))}
+           (let [pos (pos-at (or (-> (rightmost-received k) ::a/end :idx)
+                                 (.i ctx)))]
+             {::a/exception ex ::a/pos pos})
            (-failure (.pat k) ctx k)))))))
 
 (defn send [msg]
@@ -395,14 +409,6 @@
 (defmethod passed 'ambiparse/cat [_ ctx k t]
   (do-cat (dissoc t ::a/continue) ctx k (::a/continue t)))
 
-(defn rightmost [kw xs]
-  ;XXX return _all_ rightmost, otherwise nested alts mask other alts.
-  (when (seq xs)
-    (apply max-key #(-> % kw :idx) xs)))
-
-(defn rightmost-received [k]
-  (rightmost ::a/end (-> k get-node :received)))
-
 (defmethod -failure 'ambiparse/cat
   [[_ & pats] ctx k]
   (if-let [t (rightmost-received k)]
@@ -523,7 +529,6 @@
 
 (defmethod -failure 'ambiparse/-rule
   [[_ pat expr _] ctx k]
-  ;;XXX Use expr if the rule failed.
   (failure (Key. pat ctx)))
 
 
