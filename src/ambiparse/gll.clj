@@ -64,7 +64,8 @@
 (defn key? [x]
   (instance? Key x))
 
-(s/def ::pos (s/keys :req-un [::idx] :opt-un [::line ::col]))
+(s/def ::token any?)
+(s/def ::pos (s/keys :req-un [::idx] :opt-un [::line ::col ::token]))
 (s/def ::line int?)
 (s/def ::col int?)
 (s/def ::idx int?)
@@ -120,7 +121,7 @@
                    {:idx i :line (inc n) :col (- i b -1)}))
                {:idx i :line 1 :col (inc i)}
                breaks)
-    {:idx i}))
+    {:idx i :token (input-at i)}))
 
 (defn node-path [^Key k]
   (let [^Context ctx (.ctx k)
