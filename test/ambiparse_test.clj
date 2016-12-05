@@ -152,6 +152,11 @@
     {::a/expected \y ::a/actual \z
      ::a/pos {:idx 1 :line 1 :col 2}}
 
+    ;; Failure in optional element of concatenation.
+    (a/cat \a (a/? (a/cat \b \c)) \d) "abd"
+    {::a/expected \c ::a/actual \d
+     ::a/pos {:idx 2 :line 1 :col 3}}
+
     ;; Rightmost failure from alt.
     (a/alt (a/cat \x \y) \z) "xo"
     {::a/expected \y ::a/actual \o

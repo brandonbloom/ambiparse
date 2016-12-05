@@ -182,7 +182,7 @@
   ([^Key k]
    (let [^Context ctx (.ctx k)
          n (get-node k)]
-     (when-not (or (inside k) (-> n :generated seq))
+     (when-not (inside k)
        (binding [inside (conj inside k)]
          (if-let [ex (:exception n)]
            (let [pos (pos-at (or (-> (rightmost-received k) ::a/end :idx)
@@ -397,10 +397,10 @@
 (defn do-cat [t, ^Context ctx, ^Key k, pats]
   (if-let [[p & ps] pats]
     (let [i (-> t ::a/end :idx)
+          tail? (and (empty? ps) (.tail? ctx))
           env (::a/env t)
-          tl? (and (empty? ps) (.tail? ctx))
           d {:prefix t :continue ps}]
-      (add-edge p (Context. i tl? env) k d))
+      (add-edge p (Context. i tail? env) k d))
     (pass k (assoc t ::a/structure (.pat k)))))
 
 (defmethod init 'ambiparse/cat [[_ & pats], ^Context ctx, k]
@@ -410,12 +410,17 @@
   (do-cat (dissoc t ::a/continue) ctx k (::a/continue t)))
 
 (defmethod -failure 'ambiparse/cat
-  [[_ & pats] ctx k]
+  [[_ & pats], ^Context ctx, k]
   (if-let [t (rightmost-received k)]
-    (when-let [cont (::a/continue t)]
-      (failure (Key. (first cont) (assoc ctx :i (-> t ::a/end :idx)))))
-    (when-first [p pats]
-      (failure (Key. p ctx)))))
+    (when-let [[pat & pats] (-> t ::a/continue seq)]
+      (let [i (-> t ::a/end :idx)
+            tail? (and (.tail? ctx) (empty? pats))
+            env (::a/env t)
+            ctx (Context. i tail? env)]
+        (prn (Key. pat ctx))
+        (failure (Key. pat ctx))))
+    (when-first [pat pats]
+      (failure (Key. pat ctx)))))
 
 
 ;;; Alternation.
@@ -476,12 +481,11 @@
   (do-rep pat ctx k t))
 
 (defn rep-failure [[_ pat], ^Context ctx, k]
-  (when (.tail? ctx)
-    (let [[e env] (if-let [t (rightmost-received k)]
-                    [(-> t ::a/end :idx) (::a/env t)]
-                    [(.i ctx) (.env ctx)])
-          ctx* (Context. e false env)]
-      (failure (Key. pat ctx*)))))
+  (let [[e env] (if-let [t (rightmost-received k)]
+                  [(-> t ::a/end :idx) (::a/env t)]
+                  [(.i ctx) (.env ctx)])
+        ctx* (Context. e false env)]
+    (failure (Key. pat ctx*))))
 
 (defmethod -failure 'ambiparse/* [pat ctx k]
   (rep-failure pat ctx k))
@@ -502,8 +506,7 @@
   (pass k t))
 
 (defmethod -failure 'ambiparse/? [[_ pat], ^Context ctx, k]
-  (when (.tail? ctx)
-    (failure (Key. pat ctx))))
+  (failure (Key. pat ctx)))
 
 
 ;;; Transformation.

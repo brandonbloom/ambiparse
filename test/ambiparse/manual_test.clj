@@ -33,6 +33,7 @@
   (party (a/alt (a/cat \x \y) \z) "xo")
   (party (a/cat (a/alt \a (a/cat (a/alt \b \x)))) "x")
   (party (a/cat \a (a/alt \x \y) \b \b) "axbb")
+  (party (a/cat \a (a/? (a/cat \b \c)) \d) "abd")
   (party (a/* \x) "")
   (party (a/* \x) "x")
   (party (a/* \x) "xx")
