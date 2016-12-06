@@ -1,6 +1,7 @@
 (ns ambiparse.gll
   (:refer-clojure :exclude [send])
   (:require [clojure.spec :as s]
+            [clojure.set :as set]
             [ambiparse.util :refer :all]
             [ambiparse.viz :as viz]))
 
@@ -167,13 +168,19 @@
   (fn [pat ctx k]
     (classify pat)))
 
+(s/def ::error
+  (s/keys :opt-un [::a/expected ::a/predicate ::a/expression ::a/message]))
+(s/def ::errors (s/every ::error :kind set?))
+(s/def ::failure (s/keys :req-un [::pos ::errors]))
+
 (def ^:dynamic inside)
 
-;;TODO: Spec failure objects.
 ;;TODO: Extend failure objects to include both begin and end instead of just
 ;; pos. Begin is where to report error, end how far parser got for sake of
 ;; finding the "best" error.
-(s/fdef failure :args (s/alt :root (s/cat) :specific (s/cat :k key?)))
+(s/fdef failure
+  :args (s/alt :root (s/cat) :specific (s/cat :k key?))
+  :ret (s/nilable ::failure))
 
 (defn failure
   ([]
@@ -185,9 +192,9 @@
      (when-not (inside k)
        (binding [inside (conj inside k)]
          (if-let [ex (:exception n)]
-           (let [pos (pos-at (or (-> (rightmost-received k) ::a/end :idx)
-                                 (.i ctx)))]
-             {::a/exception ex ::a/pos pos})
+           (let [i (or (-> (rightmost-received k) ::a/end :idx)
+                       (.i ctx))]
+             (errors-at i {:exception ex}))
            (-failure (.pat k) ctx k)))))))
 
 (defn send [msg]
@@ -305,6 +312,10 @@
        (catch ~'Exception ex#
          (report-ex k# ex#)))))
 
+(defn errors-at [i & errs]
+  {:pos (pos-at i)
+   :errors (->> errs (remove nil?) set)})
+
 
 ;;; Terminals.
 
@@ -317,11 +328,8 @@
                ::a/env (.env ^Context ctx)}))))
 
 (defn lit-failure [^long i, c]
-  (let [x (input-at i)]
-    (when (not= x c)
-      {::a/pos (pos-at i)
-       ::a/expected c
-       ::a/actual x})))
+  (when (not= (input-at i) c)
+    (errors-at i {:expected c})))
 
 (defmethod init 'ambiparse/lit [[_ c], ^Context ctx, k]
   (lit-init (.i ctx) c k))
@@ -349,13 +357,11 @@
 (defmethod -failure java.lang.String [s, ^Context ctx, k]
   (let [i (.i ctx)]
     (loop [n 0]
-      (if (and (< n (count s)) (= (input-at (+ i n)) (nth s n)))
-        (recur (inc n))
-        (let [i (.i ctx)
-              actual (subs input i (min (count input) (+ i (count s))))]
-          {::a/pos (pos-at (+ i n))
-           ::a/expected s
-           ::a/actual actual})))))
+      (cond
+        (= n (count s)) nil
+        (= (input-at (+ i n)) (nth s n)) (recur (inc n))
+        :else (let [actual (subs input i (min (count input) (+ i (count s))))]
+                (errors-at (+ i n) {:expected s :actual actual}))))))
 
 (defmethod init 'ambiparse/-pred [[_ _ f], ^Context ctx, k]
   (let [i (.i ctx)
@@ -370,11 +376,9 @@
   (let [i (.i ctx)
         x (input-at i)]
     (when-not (f x)
-      {::a/message "Predicate failed"
-       ::a/pos (pos-at i)
-       ::a/predicate f
-       ::a/expression expr
-       ::a/actual x})))
+      (errors-at i {:message "Predicate failed"
+                    :predicate f
+                    :expression expr}))))
 
 (defmethod init 'ambiparse/eof [_, ^Context ctx, k]
   (let [i (.i ctx)]
@@ -387,9 +391,8 @@
 
 (defmethod -failure 'ambiparse/eof [_, ^Context ctx, k]
   (let [i (.i ctx)]
-    {::a/pos (pos-at i)
-     ::a/expected ::a/eof
-     ::a/actual (input-at i)}))
+    (when (not= i (count input))
+      (errors-at i {:expected ::a/eof}))))
 
 
 ;;; Concatenation.
@@ -417,7 +420,6 @@
             tail? (and (.tail? ctx) (empty? pats))
             env (::a/env t)
             ctx (Context. i tail? env)]
-        (prn (Key. pat ctx))
         (failure (Key. pat ctx))))
     (when-first [pat pats]
       (failure (Key. pat ctx)))))
@@ -437,16 +439,18 @@
   (pass-child k t))
 
 (defn alt-failure
-  [^Context ctx, pats]
-  (let [errs (->> pats (map #(failure (Key. % ctx))) (remove nil?))
-        pos (->> errs (rightmost ::a/pos) ::a/pos)
-        errs (filter #(= (::a/pos %) pos) errs)]
-    (cond
-      (next errs) {::a/pos (pos-at (.i ctx)) ::a/alts (set errs)}
-      (seq errs) (first errs))))
+  [^Context ctx, ^Key k, pats]
+  (when-not (-> k get-node :generated seq)
+    (let [failures (->> pats (map #(failure (Key. % ctx))) (remove nil?))
+          pos (->> failures (rightmost :pos) :pos)
+          failures (filter #(= (:pos %) pos) failures)]
+      (cond
+        (next failures) (apply errors-at (.i ctx)
+                          (apply set/union (map :errors failures)))
+        (seq failures) (first failures)))))
 
 (defmethod -failure 'ambiparse/alt [[_ & pats] ctx k]
-  (alt-failure ctx pats))
+  (alt-failure ctx k pats))
 
 
 ;;; Repetition.
@@ -480,14 +484,14 @@
 (defmethod passed 'ambiparse/+ [pat ctx k t]
   (do-rep pat ctx k t))
 
-(defn rep-failure [[_ pat], ^Context ctx, k]
+(defn rep-failure [pat, ^Context ctx, k]
   (let [[e env] (if-let [t (rightmost-received k)]
                   [(-> t ::a/end :idx) (::a/env t)]
-                  [(.i ctx) (.env ctx)])
-        ctx* (Context. e false env)]
-    (failure (Key. pat ctx*))))
+                  [(.i ctx) (.env ctx)])]
+    (when (or (not (.tail? ctx)) (< e (count input)))
+      (failure (Key. pat (Context. e false env))))))
 
-(defmethod -failure 'ambiparse/* [pat ctx k]
+(defmethod -failure 'ambiparse/* [[_ pat], ^Context ctx, k]
   (rep-failure pat ctx k))
 
 (defmethod -failure 'ambiparse/+ [[_ pat] ctx k]
@@ -506,7 +510,9 @@
   (pass k t))
 
 (defmethod -failure 'ambiparse/? [[_ pat], ^Context ctx, k]
-  (failure (Key. pat ctx)))
+  (when-let [fail (failure (Key. pat ctx))]
+    (when (or (not (.tail? ctx)) (< (-> fail :pos :idx) (count input)))
+      fail)))
 
 
 ;;; Transformation.
@@ -571,8 +577,8 @@
 
 (defmethod -failure clojure.lang.Var
   [pat ctx k]
-  (some-> (alt-failure ctx (var-alts pat ctx))
-          (assoc ::a/var pat)))
+  ;;TODO: Include var in failure somehow.
+  (alt-failure ctx k (var-alts pat ctx)))
 
 
 ;;; Precedence.
@@ -617,11 +623,10 @@
 (defmethod -failure 'ambiparse/-filter
   [[_ expr pat f], ^Context ctx, k]
   (if-let [rs (-> k get-node :received)]
-    {::a/message "Filter predicate failed"
-     ::a/predicate f
-     ::a/expression expr
-     ::a/pos (pos-at (.i ctx))
-     ::a/candidates rs}
+    (errors-at (.i ctx) {:message "Filter predicate failed"
+                         :predicate f
+                         :expression expr
+                         :candidates rs})
     (failure (Key. pat ctx))))
 
 
@@ -711,7 +716,7 @@
   (let [ps (distinct (parses))]
     (if (seq ps)
       [(first ps) (when (next ps)
-                    {::a/message "Ambiguous" ::a/parses (take 2 ps)})]
+                    (errors-at 0 {:message "Ambiguous" :parses (take 2 ps)}))]
       [nil (or (failure) (throw (Exception. "Unknown failure")))])))
 
 (defn parse! []

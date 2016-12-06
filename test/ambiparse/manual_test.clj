@@ -14,7 +14,9 @@
 (comment
 
   (party \x "x")
+  (party \y "x")
   (party "xy" "xy")
+  (party "xy" "xz")
   (party (a/lit :x) [:x])
   (party (a/lit :x) [:y])
   (party (a/cat) "")
@@ -37,11 +39,19 @@
   (party (a/* \x) "")
   (party (a/* \x) "x")
   (party (a/* \x) "xx")
+  (party (a/* \x) "xxy")
+  (party (a/cat (a/* \x) \y) "xxy")
   (party (a/+ \x) "")
   (party (a/+ \x) "x")
   (party (a/+ \x) "xx")
+  (party (a/+ \x) "xxy")
+  (party (a/cat (a/+ \x) \y) "xxy")
   (party (a/? \x) "")
   (party (a/? \x) "x")
+  (party (a/? \x) "y")
+  (party (a/cat (a/? \x) \z) "xz")
+  (party (a/cat (a/? \x) \z) "yz")
+  (party (a/cat (a/? \x) \y) "yz")
   (party (a/rule \x 1) "x")
   (party (a/rule \x [%]) "x")
   (party (a/rule \x (/ 1 0)) "x")
@@ -89,6 +99,9 @@
   (party U "")
   (party V "")
   (party W "")
+
+  (party (a/rule \x (a/fail! "reject")) "x")
+  (party (a/rule \x (a/fail! "reject")) "y")
 
   (binding [gll/breaks [0 3 7]]
     (doseq [i (range 9)]

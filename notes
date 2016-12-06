@@ -1,10 +1,12 @@
 TODO
-  - error recovery
+  - improved error reporting and recovery
+    - form to filter internal ambiguity
   - more disambiguation filters:
     - preceeds/follows restruction
   - Consider cut operator. See:
     Packrat Parsers Can Handle Practical Grammars in Mostly Constant Space
     "Tell" version of errors - can "commit" or "abort" current node.
+  - does tail? still even make sense?
 
 Known Issues
   - epsilon infinite loops
@@ -17,3 +19,4 @@ Perf Ideas
   - records/protocols for pattern objects
   - record for concrete syntax trees
   - can tail contexts be generalized to tail-fail?
+  - can sub graphs be garbage collected after buffered nodes are flushed?

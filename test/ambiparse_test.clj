@@ -101,141 +101,130 @@
 
     ))
 
-(defn clean-error [[t err]]
-  [t (cond-> err
-       (contains? err ::a/exception) (update ::a/exception
-                                             #(.getMessage ^Exception %))
-       (contains? err ::a/predicate) (assoc ::a/predicate '...)
-       (contains? err ::a/candidates) (assoc ::a/candidates '#{...}))])
+(defn clean-error
+  "Simplifies errors to remove object identity and minimize test fragility."
+  [err]
+  (cond-> err
+    (contains? err :exception) (update :exception #(.getMessage ^Exception %))
+    (contains? err :predicate) (assoc :predicate '...)
+    (contains? err :candidates) (update :candidates
+                                        #(->> % (map ::a/value) set))))
+
+(defn clean-failure [[t fail]]
+  [t (when fail
+       (update fail :errors #(->> % (map clean-error) set)))])
 
 (deftest errors-test
-  (are [pat s err] (= (clean-error (a/parse pat s)) [nil err])
+  (are [pat s i errs]
+       (let [ret (a/parse pat s)
+             [t {:keys [pos errors]}] (clean-failure ret)]
+         (prn [t (:idx pos) errors])
+         (= [t (:idx pos) errors] [nil i errs]))
 
     ;; Unexpected terminal.
     \x "y"
-    {::a/expected \x ::a/actual \y
-     ::a/pos {:idx 0 :line 1 :col 1}}
+    0 #{{:expected \x}}
 
     ;; Unexpected end of input.
     \x ""
-    {::a/expected \x ::a/actual ::a/eof
-     ::a/pos {:idx 0 :line 1 :col 1}}
+    0 #{{:expected \x}}
 
     ;; Unexpected string.
     "abcd" "abxd"
-    {::a/expected "abcd" ::a/actual "abxd"
-     ::a/pos {:idx 2 :line 1 :col 3}}
+    2 #{{:expected "abcd" :actual "abxd"}}
 
     ;; Short string.
     "xy" "x"
-    {::a/expected "xy" ::a/actual "x"
-     ::a/pos {:idx 1 :line 1 :col 2}}
+    1 #{{:expected "xy" :actual "x"}}
 
     ;; Lit failure in non-string input.
     (a/lit :x) [:y]
-    {::a/expected :x ::a/actual :y
-     ::a/pos {:idx 0 :token :y}}
+    0 #{{:expected :x}}
 
     ;; Predicate failed.
     (a/pred even?) [1]
-    {::a/message "Predicate failed"
-     ::a/predicate '...
-     ::a/expression 'even?
-     ::a/actual 1
-     ::a/pos {:idx 0 :token 1}}
+    0 #{{:message "Predicate failed" :predicate '...  :expression 'even?}}
 
     ;; Failure in element of concatenation.
     (a/cat \x \y) "zy"
-    {::a/expected \x ::a/actual \z
-     ::a/pos {:idx 0 :line 1 :col 1}}
+    0 #{{:expected \x}}
     (a/cat \x \y) "xz"
-    {::a/expected \y ::a/actual \z
-     ::a/pos {:idx 1 :line 1 :col 2}}
+    1 #{{:expected \y}}
+
+    ;;XXX (party (a/cat) "x")
 
     ;; Failure in optional element of concatenation.
     (a/cat \a (a/? (a/cat \b \c)) \d) "abd"
-    {::a/expected \c ::a/actual \d
-     ::a/pos {:idx 2 :line 1 :col 3}}
+    2 #{{:expected \c}}
+
+    ;;XXX Unexpected eof in cat.
 
     ;; Rightmost failure from alt.
     (a/alt (a/cat \x \y) \z) "xo"
-    {::a/expected \y ::a/actual \o
-     ::a/pos {:idx 1 :line 1 :col 2}}
+    1 #{{:expected \y}}
 
     ;; Multiple rightmost failures.
     (a/alt \x \y) "z"
-    {::a/pos {:idx 0 :line 1 :col 1}
-     ::a/alts #{{::a/expected \x ::a/actual \z
-                 ::a/pos {:idx 0 :line 1 :col 1}}
-                {::a/expected \y ::a/actual \z
-                 ::a/pos {:idx 0 :line 1 :col 1}}}}
+    0 #{{:expected \x}
+        {:expected \y}}
+
+    ;;XXX Nested rightmost failures.
 
     ;; Tail zero-or-more failure.
     (a/* (a/cat \x \y)) "x"
-    {::a/expected \y ::a/actual ::a/eof
-     ::a/pos {:idx 1 :line 1 :col 2}}
+    1 #{{:expected \y}}
 
     ;; First one-or-more failure.
     (a/+ (a/cat \x \z)) "yz"
-    {::a/expected \x ::a/actual \y
-     ::a/pos {:idx 0 :line 1 :col 1}}
+    0 #{{:expected \x}}
 
     ;; Rule pattern failure.
     (a/rule \x \z) "y"
-    {::a/expected \x ::a/actual \y
-     ::a/pos {:idx 0 :line 1 :col 1}}
+    0 #{{:expected \x}}
 
     ;; Rule expression failure.
     (a/rule \x (/ 1 0)) "x"
-    {::a/exception "Divide by zero"
-     ::a/pos {:idx 1 :line 1 :col 2}}
+    1 #{{:exception "Divide by zero"}}
 
     ;; Label pattern failure.
     (a/label :foo (a/+ \x)) "y"
-    {::a/expected \x ::a/actual \y
-     ::a/pos {:idx 0 :line 1 :col 1}}
+    0 #{{:expected \x}}
 
     ;; Var pattern failure.
     #'XS "y"
-    {::a/expected \x ::a/actual \y
-     ::a/pos {:idx 0 :line 1 :col 1}
-     ::a/var #'XS}
+    0 #{{:expected \x}} ;XXX include var.
 
     ;; Prefer compare failure.
     (a/prefer (fn [t u] (throw (Exception. "whoops")))
               (a/cat (a/cat \x \x) \x)
               (a/cat \x \x (a/cat \x)))
     "xxx"
-    {::a/exception "whoops"
-     ::a/pos {:idx 3 :line 1 :col 4}}
+    3 #{{:exception "whoops"}}
 
     ;; Prefer pattern failure.
     (a/greedy (a/+ \x)) "y"
-    {::a/expected \x ::a/actual \y
-     ::a/pos {:idx 0 :line 1 :col 1}}
+    0 #{{:expected \x}}
 
     ;XXX Check failure of cyclic prefer.
 
     ;; Filter pattern failed.
     (a/filter (constantly false) \x) "y"
-    {::a/expected \x
-     ::a/actual \y
-     ::a/pos {:idx 0 :line 1 :col 1}}
+    0 #{{:expected \x}}
 
     ;; Filter predicate failed.
     (a/filter (constantly false) \x) "x"
-    {::a/message "Filter predicate failed"
-     ::a/predicate '...
-     ::a/expression '(constantly false)
-     ::a/candidates '#{...}
-     ::a/pos {:idx 0 :line 1 :col 1}}
+    0 #{{:message "Filter predicate failed"
+         :predicate '...
+         :expression '(constantly false)
+         :candidates #{\x}}}
 
     ;; Remove predicate failed.
     (a/remove (constantly true) \x) "x"
-    {::a/message "Filter predicate failed"
-     ::a/predicate '...
-     ::a/expression '(comp not (constantly true))
-     ::a/candidates '#{...}
-     ::a/pos {:idx 0 :line 1 :col 1}}
+    0 #{{:message "Filter predicate failed"
+         :predicate '...
+         :expression '(comp not (constantly true))
+         :candidates #{\x}}}
+
+    ;;XXX test fail!
 
     ))
