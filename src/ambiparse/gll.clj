@@ -168,6 +168,10 @@
   (fn [pat ctx k]
     (classify pat)))
 
+(defn errors-at [i & errs]
+  {:pos (pos-at i)
+   :errors (->> errs (remove nil?) set)})
+
 (s/def ::expected any?)
 (s/def ::predicate ifn?)
 (s/def ::message string?)
@@ -298,7 +302,7 @@
      ::a/env (.env ctx)}))
 
 (defn report-ex [k ex]
-  (log 'catch-at k ex)
+  (prn 'catch-at k ex)
   (change! graph update-in (conj (node-path k) :exception) #(or % ex))
   nil)
 
@@ -320,11 +324,6 @@
        ~@body
        (catch ~'Exception ex#
          (report-ex k# ex#)))))
-
-(defn errors-at [i & errs]
-  {:pos (pos-at i)
-   :errors (->> errs (remove nil?) set)})
-
 
 ;;; Terminals.
 
