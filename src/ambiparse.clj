@@ -84,13 +84,22 @@
   ([pat & pats]
    (scope (apply cat pat pats))))
 
-(defn add! [var pat]
+(defn -add! [var key pat]
   (assert (var? var))
-  (change! gll/muts conj [:add var pat]))
+  (prn 'adding var key @pat)
+  (change! gll/muts conj [:add var key pat]))
 
-(defn del! [var pat]
+(defmacro add!
+  "Adds an alt pattern to the definition of var.
+  The pattern is defined by the body, which is evaluated if the given key has
+  not already been added to the var. Key must have value equality, or an
+  infinite loop can occur."
+  [var key & body]
+  `(-add! ~var ~key (delay ~@body)))
+
+(defn del! [var key]
   (assert (var? var))
-  (change! gll/muts conj [:del var pat]))
+  (change! gll/muts conj [:del var key]))
 
 (defn fail!
   ([msg] (fail! msg {}))

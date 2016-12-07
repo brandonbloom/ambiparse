@@ -118,7 +118,6 @@
   (are [pat s i errs]
        (let [ret (a/parse pat s)
              [t {:keys [pos errors]}] (clean-failure ret)]
-         (prn [t (:idx pos) errors])
          (= [t (:idx pos) errors] [nil i errs]))
 
     ;; Unexpected terminal.

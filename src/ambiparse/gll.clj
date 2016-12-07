@@ -71,7 +71,7 @@
 (s/def ::col int?)
 (s/def ::idx int?)
 
-(s/def ::env (s/every-kv var? (s/every ::pat, :kind set?)))
+(s/def ::env (s/every-kv var? (s/every-kv any? ::pat, :kind map?)))
 
 (s/def ::pattern some?)
 
@@ -277,7 +277,6 @@
   :args (s/cat :k key?, :t ::passed))
 
 (defn pass [{:keys [pat ctx] :as k} t]
-  ;;XXX forward ::a/matched
   (when (or (not (.tail? ^Context ctx))
             (= (-> t ::a/end :idx) (count input)))
     (let [v (::a/value t)
@@ -528,10 +527,10 @@
 (def ^:dynamic muts)
 
 (defn modify [env]
-  (reduce (fn [env [op v pat]]
+  (reduce (fn [env [op v key pat]]
             (case op
-              :add (update env v conjs pat)
-              :del (update env v disj pat)))
+              :add (update-in env [v key] #(doto (or % @pat) assert))
+              :del (update env v dissoc key)))
           env
           muts))
 
@@ -543,7 +542,7 @@
   [[_ pat _ f], ^Context ctx, k, t]
   (binding [muts []]
     (when-let [t* (try-at k (f t))]
-      (let [t* (assoc t* ::a/env (modify (.env ctx)))]
+      (let [t* (update t* ::a/env modify)]
         (pass-child k t*)))))
 
 (defmethod -failure 'ambiparse/-rule
@@ -572,7 +571,9 @@
 ;;; Indirection.
 
 (defn var-alts [var, ^Context ctx]
-  (conj ((.env ctx) var #{}) @var))
+  (-> (get (.env ctx) var)
+      vals
+      (conj @var)))
 
 (defmethod init clojure.lang.Var
   [pat ctx k]

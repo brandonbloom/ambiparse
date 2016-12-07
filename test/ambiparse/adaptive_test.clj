@@ -5,7 +5,7 @@
 (def Atom \a)
 
 (def Add (a/rule (a/cat \+ (a/label :x (a/pred any?)))
-                 (a/add! #'Atom (:x %))
+                 (a/add! #'Atom (:x %) (:x %))
                  (str "+" (:x %))))
 
 (def Del (a/rule (a/cat \- (a/label :x (a/pred any?)))
