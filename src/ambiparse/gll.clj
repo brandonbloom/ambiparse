@@ -168,8 +168,13 @@
   (fn [pat ctx k]
     (classify pat)))
 
+(s/def ::expected any?)
+(s/def ::predicate ifn?)
+(s/def ::message string?)
+(s/def ::exception #(instance? Exception %))
 (s/def ::error
-  (s/keys :opt-un [::a/expected ::a/predicate ::a/expression ::a/message]))
+  (s/keys :opt-un [::expected ::message ::predicate
+                   ::expression ::exception ::data]))
 (s/def ::errors (s/every ::error :kind set?))
 (s/def ::failure (s/keys :req-un [::pos ::errors]))
 
@@ -191,10 +196,13 @@
          n (get-node k)]
      (when-not (inside k)
        (binding [inside (conj inside k)]
-         (if-let [ex (:exception n)]
-           (let [i (or (-> (rightmost-received k) ::a/end :idx)
-                       (.i ctx))]
-             (errors-at i {:exception ex}))
+         (if-let [^Exception ex (:exception n)]
+           (errors-at (or (-> (rightmost-received k) ::a/end :idx)
+                          (.i ctx))
+                      (if (-> ex ex-data ::a/failure)
+                        {:message (.getMessage ex)
+                         :data (-> ex ex-data (dissoc ::a/failure))}
+                        {:exception ex}))
            (-failure (.pat k) ctx k)))))))
 
 (defn send [msg]
@@ -202,15 +210,15 @@
   (change! queue conj msg)
   nil)
 
-(s/fdef add-node
-  :args (s/cat :pat ::pattern, :ctx context?))
-
 (defn head-fail [i pat]
   (cond
     (char? pat) (not= (input-at i) pat)
     (= pat 'ambiparse/eof) (not= i (count input))
     :else (when-let [f (-> pat meta ::a/head-fail)]
             (f (input-at i)))))
+
+(s/fdef add-node
+  :args (s/cat :pat ::pattern, :ctx context?))
 
 (defn add-node [pat, ^Context ctx]
   (when-not (head-fail (.i ctx) pat)
@@ -234,6 +242,7 @@
 (defn decorate
   "Applies a transformation to trees flowing along an edge."
   [t {:as d :keys [prefix continue]}]
+  {:post [(s/assert ::tree %)]}
   (if d
     (merge prefix t
            {::a/begin (::a/begin prefix)

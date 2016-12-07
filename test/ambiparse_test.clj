@@ -168,7 +168,11 @@
     0 #{{:expected \x}
         {:expected \y}}
 
-    ;;XXX Nested rightmost failures.
+    ;; Nested rightmost failures.
+    (a/alt \x (a/alt \y \z)) "w"
+    0 #{{:expected \x}
+        {:expected \y}
+        {:expected \z}}
 
     ;; Tail zero-or-more failure.
     (a/* (a/cat \x \y)) "x"
@@ -182,9 +186,14 @@
     (a/rule \x \z) "y"
     0 #{{:expected \x}}
 
-    ;; Rule expression failure.
+    ;; Rule expression exception.
     (a/rule \x (/ 1 0)) "x"
     1 #{{:exception "Divide by zero"}}
+
+    ;; Explicit failure rule.
+    (a/rule \x (a/fail! "oh noez!" {:x 123})) "x"
+    1 #{{:message "oh noez!"
+         :data {:x 123}}}
 
     ;; Label pattern failure.
     (a/label :foo (a/+ \x)) "y"
@@ -224,7 +233,5 @@
          :predicate '...
          :expression '(comp not (constantly true))
          :candidates #{\x}}}
-
-    ;;XXX test fail!
 
     ))

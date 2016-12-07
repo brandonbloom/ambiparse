@@ -92,6 +92,11 @@
   (assert (var? var))
   (change! gll/muts conj [:del var pat]))
 
+(defn fail!
+  ([msg] (fail! msg {}))
+  ([msg data]
+   (throw (ex-info msg (assoc data ::a/failure true)))))
+
 
 ;;; Execution.
 
