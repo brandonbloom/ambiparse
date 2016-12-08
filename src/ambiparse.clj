@@ -86,7 +86,6 @@
 
 (defn -add! [var key pat]
   (assert (var? var))
-  (prn 'adding var key @pat)
   (change! gll/muts conj [:add var key pat]))
 
 (defmacro add!
