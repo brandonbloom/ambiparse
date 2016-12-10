@@ -13,6 +13,7 @@ Known Issues
   - eof infinite loops
   - bad error messages from nested alts or multiple-rightmost partial parses
   - * and + do not set ::a/structure
+  - caught exceptions are frequently swallowed by unprincipaled recovery
 
 Perf Ideas
   - avoid nodes for constant terminals
@@ -20,3 +21,7 @@ Perf Ideas
   - record for concrete syntax trees
   - can tail contexts be generalized to tail-fail?
   - can sub graphs be garbage collected after buffered nodes are flushed?
+  - use pre-allocated exception for fail!
+  - dispatch node
+    - based on what's parsed, gen rule.
+    - like alt with the opposite of a head-fail

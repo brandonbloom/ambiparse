@@ -301,19 +301,9 @@
      ::a/env (.env ctx)}))
 
 (defn report-ex [k ex]
-  (prn 'catch-at k ex)
-  (change! graph update-in (conj (node-path k) :exception) #(or % ex))
-  nil)
-
-(defmacro try-at [k & body]
-  `(let [k# ~k]
-     (try
-       ~@body
-       (catch ~'Exception ex#
-         (report-ex k# ex#)))))
-
-(defn report-ex [k ex]
-  (log 'catch-at k ex)
+  (when-not (-> ex ex-data ::a/failure)
+    (binding [*out* *err*]
+      (prn 'catch-at k ex))) ;XXX Remove me after implementing error recovery.
   (change! graph update-in (conj (node-path k) :exception) #(or % ex))
   nil)
 
