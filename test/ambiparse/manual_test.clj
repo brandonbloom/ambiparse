@@ -103,6 +103,12 @@
   (party (a/rule \x (a/fail! "reject")) "x")
   (party (a/rule \x (a/fail! "reject")) "y")
 
+  (party (a/dispatch (a/alt \a \b)
+           (case (::a/value %)
+             \a \x
+             \b \y))
+         "ax")
+
   (binding [gll/breaks [0 3 7]]
     (doseq [i (range 9)]
       (prn i (gll/pos-at i))))

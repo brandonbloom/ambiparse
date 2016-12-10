@@ -46,8 +46,8 @@
 (defn ? [pat]
   (list `? pat))
 
-(defn -rule [pat expr f]
-  (with-meta (list `-rule pat expr f)
+(defn -rule [pat body f]
+  (with-meta (list `-rule pat body f)
              {::a/head-fail (-> pat meta ::a/head-fail)}))
 
 (defmacro rule [pat & body]
@@ -85,6 +85,13 @@
               {::a/head-fail (-> pat meta ::a/head-fail)}))
   ([pat & pats]
    (scope (apply cat pat pats))))
+
+(defn -dispatch [pat body f]
+  (with-meta (list `-dispatch pat body f)
+             {::a/head-fail (-> pat meta ::a/head-fail)}))
+
+(defmacro dispatch [pat & body]
+  `(-dispatch ~pat '~body (fn [~'%] ~@body)))
 
 (defn -add! [var key pat]
   (assert (var? var))

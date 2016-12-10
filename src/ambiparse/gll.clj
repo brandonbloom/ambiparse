@@ -200,6 +200,8 @@
          n (get-node k)]
      (when-not (inside k)
        (binding [inside (conj inside k)]
+         ;;XXX Let individual -failure methods handle :exception so
+         ;; that they can include :expr or :body in the error.
          (if-let [^Exception ex (:exception n)]
            (errors-at (or (-> (rightmost-received k) ::a/end :idx)
                           (.i ctx))
@@ -245,7 +247,7 @@
 
 (defn decorate
   "Applies a transformation to trees flowing along an edge."
-  [t {:as d :keys [prefix continue]}]
+  [t {:as d :keys [prefix continue dispatch]}]
   {:post [(s/assert ::tree %)]}
   (if d
     (merge prefix t
@@ -395,7 +397,7 @@
 ;;; Concatenation.
 
 (defn do-cat [t, ^Context ctx, ^Key k, pats]
-  (if-let [[p & ps] pats]
+  (if-let [[p & ps] (seq pats)]
     (let [i (-> t ::a/end :idx)
           tail? (and (empty? ps) (.tail? ctx))
           env (::a/env t)
@@ -420,6 +422,26 @@
         (failure (Key. pat ctx))))
     (when-first [pat pats]
       (failure (Key. pat ctx)))))
+
+
+;;; Dispatch.
+
+(defmethod init 'ambiparse/-dispatch
+  [[_ pat _ _] ctx k]
+  (do-cat (empty-in ctx) ctx k (list pat :dispatch)))
+
+(defmethod passed 'ambiparse/-dispatch
+  [[_ pat _ f], ^Context ctx, k, t]
+  (when-let [cont (if (::a/continue t)
+                    [(-> t ::a/elements first f)]
+                    [])]
+    (do-cat (dissoc t ::a/continue) ctx k cont)))
+
+(defmethod -failure 'ambiparse/-dispatch
+  [[_ pat body _] ctx k]
+  (or (failure (Key. pat (assoc ctx :tail? false)))
+      ;XXX for each received, check continuation.
+      ))
 
 
 ;;; Alternation.
@@ -536,7 +558,7 @@
         (pass-child k t*)))))
 
 (defmethod -failure 'ambiparse/-rule
-  [[_ pat expr _] ctx k]
+  [[_ pat body _] ctx k]
   (failure (Key. pat ctx)))
 
 
@@ -642,6 +664,7 @@
 (defmethod -failure 'ambiparse/scope
   [[_ pat] ctx k]
   (failure (Key. pat ctx)))
+
 
 
 ;;; Execution.
