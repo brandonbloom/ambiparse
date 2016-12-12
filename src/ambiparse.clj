@@ -144,22 +144,35 @@
 ;;; Execution.
 
 (defn parses
+  "Returns a lazy-seq of successful parses or a failure.
+
+  Options:
+  :unique Produces an ambiguity error if there are multiple successful parses.
+  :fuel   Limits the number of steps to perform before giving up.
+  :viz    Set to true to pop open a debug visualization of the parser network.
+  :env    Initial environment."
   ([pat s] (parses pat s {}))
   ([pat s opts]
-   (gll/with-run pat s opts
-     (gll/parses))))
+   (gll/run pat s opts)))
 
 (defn parse
+  "Returns a pair of an unambiguous parse and a failure.
+  Only one will be non-nil. See parses."
   ([pat s] (parse pat s {}))
   ([pat s opts]
-   (gll/with-run pat s opts
-     (gll/parse))))
+   (let [ps (parses pat s (assoc opts :unique true))]
+     (if (seq? ps)
+       [(first ps) nil]
+       [nil ps]))))
 
 (defn parse!
+  "Returns the success result of parse or throws the failure."
   ([pat s] (parse! pat s {}))
   ([pat s opts]
-   (gll/with-run pat s opts
-     (gll/parse!))))
+   (let [[p err] (parse pat s opts)]
+     (if err
+       (throw (ex-info "Parse failed" err))
+       p))))
 
 
 ;;; Library.

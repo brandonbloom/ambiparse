@@ -36,7 +36,7 @@
     "+b +c b c -b c" ["+b" "+c" \b \c "-b" \c]
     )
   ;;TODO: Check specific failures.
-  (are [s] (empty? (a/parses Commands s))
+  (are [s] (not (seq? (a/parses Commands s)))
     "b"
     "a b"
     "+b c"
@@ -49,8 +49,13 @@
             (a/bind! ::count (inc (or (a/resolve ::count) 0)))
             nil)
         xs (a/rule (a/* x)
-             (a/resolve ::count))]
-    (is (= (a/parse! xs "xxxx") 4))))
+             {:env (::a/env %)
+              :count (a/resolve ::count)})
+        {:keys [env count]} (a/parse! xs "xxxx")
+        _ (is (= count 4))
+        {:keys [count]} (a/parse! xs "xx" {:env env})
+        _ (is (= count 6))]
+    ))
 
 (comment
 

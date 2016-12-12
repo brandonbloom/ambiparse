@@ -22,8 +22,14 @@
 (def V (a/cat (a/? #'V) a/eof))
 (def W (a/cat (a/? #'W) (a/cat)))
 
+(defn parse-set [pat s]
+  (let [ps (a/parses pat s {:fuel 500})]
+    (if (seq? ps)
+      (set ps)
+      #{})))
+
 (deftest parses-test
-  (are [pat s ts] (= (set (a/parses pat s {:fuel 500})) ts)
+  (are [pat s ts] (= (parse-set pat s) ts)
 
     \x "x" #{\x}
     \y "x" #{}

@@ -58,8 +58,6 @@
 (defn context? [x]
   (instance? Context x))
 
-(def root-ctx (Context. 0 true {}))
-
 (defrecord Key [pat, ^Context ctx])
 
 (defn key? [x]
@@ -695,15 +693,14 @@
         ;;XXX clear the buffer!
         ))))
 
-(defn run []
-  (let [{:keys [pat ctx]} root]
-    (add-node pat ctx))
-  (while (seq queue)
-    (pump)))
+(defn root-ctx [opts]
+  (let [env (:env opts {})]
+    (Context. 0 true env)))
 
-(defn with-run-fn [pat s opts f]
+(defn run [pat s opts]
+  ;;TODO: Generate parses lazily.
   (binding [input s
-            root (Key. pat root-ctx)
+            root (Key. pat (root-ctx opts))
             graph []
             queue []
             buffered #{}
@@ -711,31 +708,18 @@
             traveled 0
             fuel (opts :fuel 0)]
     (try
-      (run)
+      (let [{:keys [pat ctx]} root]
+        (add-node pat ctx))
+      (while (seq queue)
+        (pump))
       (finally
         (log 'final-state= (state))
         (when (:viz opts)
           (viz/show! (state)))))
-    (f)))
-
-(defmacro with-run [pat s opts & body]
-  `(with-run-fn ~pat ~s ~opts (fn [] ~@body)))
-
-(defn trees []
-  (-> root get-node :generated))
-
-(defn parses []
-  (map ::a/value (trees)))
-
-(defn parse []
-  (let [ps (distinct (parses))]
-    (if (seq ps)
-      [(first ps) (when (next ps)
-                    (errors-at 0 {:message "Ambiguous" :parses (take 2 ps)}))]
-      [nil (or (failure) (throw (Exception. "Unknown failure")))])))
-
-(defn parse! []
-  (let [[p err] (parse)]
-    (when err
-      (throw (ex-info "Parse failed" err)))
-    p))
+    (let [ps (->> root get-node :generated (map ::a/value) distinct)]
+      (cond
+        (next ps) (if (:unique opts)
+                    (errors-at 0 {:message "Ambiguous" :parses (take 2 ps)})
+                    ps)
+        (seq ps) ps
+        :else (or (failure) #_(throw (Exception. "Unknown failure"))))))) ;XXX
