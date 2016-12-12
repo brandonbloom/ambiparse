@@ -135,6 +135,18 @@
   (change! gll/env update var dissoc key)
   nil)
 
+(defmacro extend-env
+  "Executes body in the given parsing environment, returning the changed env."
+  [env & body]
+  `(binding [gll/env ~env]
+     ~@body
+     gll/env))
+
+(defmacro build-env
+  "Like extend-env with an empty environment."
+  [& body]
+  `(extend-env {} ~@body))
+
 (defn fail!
   ([msg] (fail! msg {}))
   ([msg data]
