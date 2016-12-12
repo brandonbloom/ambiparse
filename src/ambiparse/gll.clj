@@ -354,7 +354,7 @@
   (let [i (.i ctx)]
     (loop [n 0]
       (cond
-        (= n (count s)) nil
+        (= n (count s)) (errors-at (+ i n) {:expected ::a/eof})
         (= (input-at (+ i n)) (nth s n)) (recur (inc n))
         :else (let [actual (subs input i (min (count input) (+ i (count s))))]
                 (errors-at (+ i n) {:expected s :actual actual}))))))
@@ -415,9 +415,8 @@
                           env (::a/env t)]
                       [(first pats) (Context. i env)])
                     [(first pats) ctx])]
-    (if pat
-      (failure (Key. pat ctx))
-      (errors-at (:i ctx) {:expected ::a/eof}))))
+    (or (and pat (failure (Key. pat ctx)))
+        (errors-at (:i ctx) {:expected ::a/eof}))))
 
 
 ;;; Dispatch.
@@ -715,4 +714,4 @@
                     (errors-at 0 {:message "Ambiguous" :parses (take 2 ps)})
                     ps)
         (seq ps) ps
-        :else (or (failure) #_(throw (Exception. "Unknown failure")))))))
+        :else (or (failure) (throw (Exception. "Unknown failure")))))))
