@@ -163,13 +163,21 @@
     (a/cat \x \y) "xz"
     1 #{{:expected \y}}
 
-    ;;XXX (party (a/cat) "x")
-
     ;; Failure in optional element of concatenation.
     (a/cat \a (a/? (a/cat \b \c)) \d) "abd"
     2 #{{:expected \c}}
 
-    ;;XXX Unexpected eof in cat.
+    ;; Empty cat before end of input.
+    (a/cat) "x"
+    0 #{{:expected ::a/eof}}
+
+    ;; Cat shorter than input.
+    (a/cat "x") "xy"
+    1 #{{:expected ::a/eof}}
+
+    ;; Unexpected eof in cat.
+    (a/cat \x \y) "x"
+    1 #{{:expected \y}}
 
     ;; Rightmost failure from alt.
     (a/alt (a/cat \x \y) \z) "xo"

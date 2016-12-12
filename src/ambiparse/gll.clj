@@ -53,7 +53,7 @@
    :queue queue
    :fuel fuel})
 
-(defrecord Context [^long i, ^boolean tail?, env])
+(defrecord Context [^long i, env])
 
 (defn context? [x]
   (instance? Context x))
@@ -278,16 +278,14 @@
   :args (s/cat :k key?, :t ::passed))
 
 (defn pass [{:keys [pat ctx] :as k} t]
-  (when (or (not (.tail? ^Context ctx))
-            (= (-> t ::a/end :idx) (count input)))
-    (let [v (::a/value t)
-          t (assoc t ::a/pattern pat)
-          n (get-node k)]
-      (when-not (get-in n [:generated t])
-        (change! graph update-in (conj (node-path k) :generated) conjs t)
-        (doseq [[dst ds] (:edges n)
-                d ds]
-          (send [:pass dst (decorate t d)]))))))
+  (let [v (::a/value t)
+        t (assoc t ::a/pattern pat)
+        n (get-node k)]
+    (when-not (get-in n [:generated t])
+      (change! graph update-in (conj (node-path k) :generated) conjs t)
+      (doseq [[dst ds] (:edges n)
+              d ds]
+        (send [:pass dst (decorate t d)])))))
 
 (defn pass-child [k t]
   (pass k (assoc t ::a/children [t])))
@@ -304,7 +302,7 @@
 (defn report-ex [k ex]
   (when-not (-> ex ex-data ::a/failure)
     (binding [*out* *err*]
-      (prn 'catch-at k ex))) ;XXX Remove me after implementing error recovery.
+      #_(prn 'catch-at k ex))) ;XXX Remove me after implementing error recovery.
   (change! graph update-in (conj (node-path k) :exception) #(or % ex))
   nil)
 
@@ -398,10 +396,9 @@
 (defn do-cat [t, ^Context ctx, ^Key k, pats]
   (if-let [[p & ps] (seq pats)]
     (let [i (-> t ::a/end :idx)
-          tail? (and (empty? ps) (.tail? ctx))
           env (::a/env t)
           d {:prefix t :continue ps}]
-      (add-edge p (Context. i tail? env) k d))
+      (add-edge p (Context. i env) k d))
     (pass k (assoc t ::a/structure (.pat k)))))
 
 (defmethod init 'ambiparse/cat [[_ & pats], ^Context ctx, k]
@@ -412,15 +409,15 @@
 
 (defmethod -failure 'ambiparse/cat
   [[_ & pats], ^Context ctx, k]
-  (if-let [t (rightmost-received k)]
-    (when-let [[pat & pats] (-> t ::a/continue seq)]
-      (let [i (-> t ::a/end :idx)
-            tail? (and (.tail? ctx) (empty? pats))
-            env (::a/env t)
-            ctx (Context. i tail? env)]
-        (failure (Key. pat ctx))))
-    (when-first [pat pats]
-      (failure (Key. pat ctx)))))
+  (let [[pat ctx] (if-let [t (rightmost-received k)]
+                    (let [pats (-> t ::a/continue seq)
+                          i (-> t ::a/end :idx)
+                          env (::a/env t)]
+                      [(first pats) (Context. i env)])
+                    [(first pats) ctx])]
+    (if pat
+      (failure (Key. pat ctx))
+      (errors-at (:i ctx) {:expected ::a/eof}))))
 
 
 ;;; Dispatch.
@@ -438,7 +435,7 @@
 
 (defmethod -failure 'ambiparse/-dispatch
   [[_ pat body _] ctx k]
-  (or (failure (Key. pat (assoc ctx :tail? false)))
+  (or (failure (Key. pat ctx))
       ;XXX for each received, check continuation.
       ))
 
@@ -486,15 +483,15 @@
     (let [b (-> t ::a/begin :idx)
           e (-> t ::a/end :idx)]
       (when (< b e)
-        (add-edge pat (Context. e false (::a/env t)) k {:prefix t})))))
+        (add-edge pat (Context. e (::a/env t)) k {:prefix t})))))
 
 (defmethod init 'ambiparse/* [[_ pat] ctx k]
   (let [t (empty-in ctx)]
     (pass k t)
-    (add-edge pat (assoc ctx :tail? false) k {:prefix t})))
+    (add-edge pat ctx k {:prefix t})))
 
 (defmethod init 'ambiparse/+ [[_ pat] ctx k]
-  (add-edge pat (assoc ctx :tail? false) k {:prefix (empty-in ctx)}))
+  (add-edge pat ctx k {:prefix (empty-in ctx)}))
 
 (defmethod passed 'ambiparse/* [pat ctx k t]
   (do-rep pat ctx k t))
@@ -506,14 +503,13 @@
   (let [[e env] (if-let [t (rightmost-received k)]
                   [(-> t ::a/end :idx) (::a/env t)]
                   [(.i ctx) (.env ctx)])]
-    (when (or (not (.tail? ctx)) (< e (count input)))
-      (failure (Key. pat (Context. e false env))))))
+    (failure (Key. pat (Context. e env)))))
 
 (defmethod -failure 'ambiparse/* [[_ pat], ^Context ctx, k]
   (rep-failure pat ctx k))
 
 (defmethod -failure 'ambiparse/+ [[_ pat] ctx k]
-  (or (failure (Key. pat (assoc ctx :tail? false)))
+  (or (failure (Key. pat ctx))
       (rep-failure pat ctx k)))
 
 
@@ -528,9 +524,7 @@
   (pass k t))
 
 (defmethod -failure 'ambiparse/? [[_ pat], ^Context ctx, k]
-  (when-let [fail (failure (Key. pat ctx))]
-    (when (or (not (.tail? ctx)) (< (-> fail :pos :idx) (count input)))
-      fail)))
+  (failure (Key. pat ctx)))
 
 
 ;;; Transformation.
@@ -693,14 +687,10 @@
         ;;XXX clear the buffer!
         ))))
 
-(defn root-ctx [opts]
-  (let [env (:env opts {})]
-    (Context. 0 true env)))
-
 (defn run [pat s opts]
   ;;TODO: Generate parses lazily.
   (binding [input s
-            root (Key. pat (root-ctx opts))
+            root (Key. pat (Context. 0 (:env opts {})))
             graph []
             queue []
             buffered #{}
@@ -716,10 +706,13 @@
         (log 'final-state= (state))
         (when (:viz opts)
           (viz/show! (state)))))
-    (let [ps (->> root get-node :generated (map ::a/value) distinct)]
+    (let [ps (->> root get-node :generated
+                  (remove #(< (-> % ::a/end :idx) (count s)))
+                  (map ::a/value)
+                  distinct)]
       (cond
         (next ps) (if (:unique opts)
                     (errors-at 0 {:message "Ambiguous" :parses (take 2 ps)})
                     ps)
         (seq ps) ps
-        :else (or (failure) #_(throw (Exception. "Unknown failure"))))))) ;XXX
+        :else (or (failure) #_(throw (Exception. "Unknown failure")))))))

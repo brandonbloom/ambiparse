@@ -22,6 +22,7 @@
   (party (a/cat \x \y) "x")
   (party (a/cat \x \y) "xy")
   (party (a/cat \x \y) "xz")
+  (party (a/cat \x) "xy")
   (party (a/cat \x \y \z) "xy")
   (party (a/cat \x \y \z) "xyz")
   (party (a/alt) "")

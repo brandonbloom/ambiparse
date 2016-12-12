@@ -6,7 +6,6 @@ TODO
   - Consider cut operator. See:
     Packrat Parsers Can Handle Practical Grammars in Mostly Constant Space
     "Tell" version of errors - can "commit" or "abort" current node.
-  - does tail? still even make sense?
 
 Known Issues
   - epsilon infinite loops
@@ -19,7 +18,6 @@ Perf Ideas
   - avoid nodes for constant terminals
   - records/protocols for pattern objects
   - record for concrete syntax trees
-  - can tail contexts be generalized to tail-fail?
   - can sub graphs be garbage collected after buffered nodes are flushed?
   - use pre-allocated exception for fail!
   - dispatch node

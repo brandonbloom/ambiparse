@@ -63,11 +63,9 @@
     [(pos-node input)
      (for [[i ks] (map vector (range) graph)
            [k {:keys [edges]}] ks
-           :let [{:keys [tail?]} (:ctx k)
-                 src-id (identify ids k)]]
+           :let [src-id (identify ids k)]]
        ;; Nodes.
-       (list [src-id {:label (node-label k)
-                      :penwidth (if tail? 3 1)}]
+       (list [src-id {:label (node-label k)}]
              ;; Position edge.
              [(str "pos:i" i) src-id {:headlabel (str i)
                                       :style "dotted"
