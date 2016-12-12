@@ -71,7 +71,8 @@
 (s/def ::col int?)
 (s/def ::idx int?)
 
-(s/def ::env (s/every-kv var? (s/every-kv any? ::pat, :kind map?)))
+(s/def ::var (s/or :var var? :kw qualified-keyword?))
+(s/def ::env (s/every-kv ::var (s/every-kv any? ::pat, :kind map?)))
 
 (s/def ::pattern some?)
 
@@ -536,15 +537,7 @@
 
 ;;; Transformation.
 
-(def ^:dynamic muts)
-
-(defn modify [env]
-  (reduce (fn [env [op v key pat]]
-            (case op
-              :add (update-in env [v key] #(doto (or % @pat) assert))
-              :del (update env v dissoc key)))
-          env
-          muts))
+(def ^:dynamic env)
 
 (defmethod init 'ambiparse/-rule
   [[_ pat _ f] ctx k]
@@ -552,9 +545,9 @@
 
 (defmethod passed 'ambiparse/-rule
   [[_ pat _ f], ^Context ctx, k, t]
-  (binding [muts []]
+  (binding [env (::a/env t)]
     (when-let [t* (try-at k (f t))]
-      (let [t* (update t* ::a/env modify)]
+      (let [t* (assoc t* ::a/env env)]
         (pass-child k t*)))))
 
 (defmethod -failure 'ambiparse/-rule

@@ -21,7 +21,7 @@
 
 (def Commands (a/interpose* \space Command))
 
-(deftest adaptive-test
+(deftest add-del-test
   (are [s t] (= (a/parse! Commands s) t)
     "" []
     "a" [\a]
@@ -43,6 +43,14 @@
     "[+b b] b"
     "+b +c b c -b b"
     ))
+
+(deftest bind-test
+  (let [x (a/rule \x
+            (a/bind! ::count (inc (or (a/resolve ::count) 0)))
+            nil)
+        xs (a/rule (a/* x)
+             (a/resolve ::count))]
+    (is (= (a/parse! xs "xxxx") 4))))
 
 (comment
 

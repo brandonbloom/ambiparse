@@ -1,5 +1,5 @@
 (ns ambiparse
-  (:refer-clojure :exclude [cat * + filter remove cons])
+  (:refer-clojure :exclude [cat * + filter remove cons resolve])
   (:require [ambiparse.gll :as gll]
             [ambiparse.util :refer :all]))
 
@@ -93,21 +93,47 @@
 (defmacro dispatch [pat & body]
   `(-dispatch ~pat '~body (fn [~'%] ~@body)))
 
-(defn -add! [var key pat]
-  (assert (var? var))
-  (change! gll/muts conj [:add var key pat]))
+(defn resolve
+  "Retreives the bound value of a qualified keyword in the current parsing
+  environment, or nil."
+  [id]
+  (assert (qualified-keyword? id))
+  (some-> (gll/env id) first val))
+
+(defmacro bind!
+  "Changes the parsing environment to bind the qualified keyword id to resolve
+  to val. Any prior binding for id is removed.  If val has unstable value
+  identity (such as a freshly allocated lexical closure), a stable key can
+  be supplied to prevent the parser from going in to an infinite loop.
+  If the current binding has the same key, body is not evaluated and the
+  binding environment remains unchanged."
+  ([id val]
+   `(let [id# ~id
+          val# ~val]
+      (bind! id# val# val#)))
+  ([id key & body]
+   `(let [id# ~id
+          key# ~key
+          binding# (first (gll/env id#))]
+      (assert (qualified-keyword? ~id))
+      (when (or (nil? binding#) (not= (key binding#) key#))
+        (change! gll/env assoc id# {key# (do ~@body)}))
+      nil)))
 
 (defmacro add!
-  "Adds an alt pattern to the definition of var.
-  The pattern is defined by the body, which is evaluated if the given key has
-  not already been added to the var. Key must have value equality, or an
-  infinite loop can occur."
+  "Extends the parsing environment with an additional alt pattern for var.
+  Replaces existing extensions with the same var and key.  See bind! for a
+  warning about environment binding keys."
   [var key & body]
-  `(-add! ~var ~key (delay ~@body)))
+  `(let [v# ~var]
+     (assert (var? v#))
+     (change! gll/env update-in [v# ~key] #(doto (or % (do ~@body)) assert))
+     nil))
 
 (defn del! [var key]
   (assert (var? var))
-  (change! gll/muts conj [:del var key]))
+  (change! gll/env update var dissoc key)
+  nil)
 
 (defn fail!
   ([msg] (fail! msg {}))
