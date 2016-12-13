@@ -54,8 +54,7 @@ on the finer points of the algorithm's implementation.
 
 Copyright © 2016 Brandon Bloom
 
-Distributed under the Eclipse Public License either version 1.0 or (at
-your option) any later version.
+Distributed under the Eclipse Public License version 1.0.
 
 [1]: ./test/ambiparse/calc_test.clj
 [2]: ./test/ambiparse/edn_test.clj
