@@ -69,10 +69,10 @@
 (s/def ::col int?)
 (s/def ::idx int?)
 
-(s/def ::var (s/or :var var? :kw qualified-keyword?))
-(s/def ::env (s/every-kv ::var (s/every-kv any? ::pat, :kind map?)))
-
 (s/def ::pattern some?)
+
+(s/def ::var (s/or :var var? :kw qualified-keyword?))
+(s/def ::env (s/every-kv ::var (s/every-kv any? ::pattern, :kind map?)))
 
 (s/def ::span (s/cat :begin ::idx :end ::idx))
 
