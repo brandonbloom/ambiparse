@@ -453,18 +453,17 @@
   (pass-child k t))
 
 (defn alt-failure
-  [^Context ctx, ^Key k, pats]
-  (when-not (-> k get-node :generated seq)
-    (let [failures (->> pats (map #(failure (Key. % ctx))) (remove nil?))
-          pos (->> failures (rightmost :pos) :pos)
-          failures (filter #(= (:pos %) pos) failures)]
-      (cond
-        (next failures) (apply errors-at (.i ctx)
-                          (apply set/union (map :errors failures)))
-        (seq failures) (first failures)))))
+  [^Context ctx, pats]
+  (let [failures (->> pats (map #(failure (Key. % ctx))) (remove nil?))
+        pos (->> failures (rightmost :pos) :pos)
+        failures (filter #(= (:pos %) pos) failures)]
+    (cond
+      (next failures) (apply errors-at (.i ctx)
+                        (apply set/union (map :errors failures)))
+      (seq failures) (first failures))))
 
 (defmethod -failure 'ambiparse/alt [[_ & pats] ctx k]
-  (alt-failure ctx k pats))
+  (alt-failure ctx pats))
 
 
 ;;; Repetition.
@@ -583,7 +582,7 @@
 (defmethod -failure clojure.lang.Var
   [pat ctx k]
   ;;TODO: Include var in failure somehow.
-  (alt-failure ctx k (var-alts pat ctx)))
+  (alt-failure ctx (var-alts pat ctx)))
 
 
 ;;; Precedence.
@@ -714,4 +713,4 @@
                     (errors-at 0 {:message "Ambiguous" :parses (take 2 ps)})
                     ps)
         (seq ps) ps
-        :else (or (failure) (throw (Exception. "Unknown failure")))))))
+        :else (or (failure) (throw (Exception. "Unknown parse failure")))))))
