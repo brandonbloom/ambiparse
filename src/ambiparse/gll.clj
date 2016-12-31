@@ -234,11 +234,12 @@
       k)))
 
 (s/def ::prefix ::passed)
-(s/def ::continue (s/nilable (s/every ::pattern :kind seq?)))
+(s/def ::continue (s/nilable (s/or :cat (s/every ::pattern :kind seq?)
+                                   :dispatch #{:dispatch})))
 
 (s/def ::decorator
   (s/keys :req-un [::prefix]
-          :opt-un [::continue]))
+          :opt-un [::continue ::dispatch]))
 
 (s/fdef decorate
   :args (s/cat :t ::tree, ::d (s/nilable ::decorator))
@@ -425,16 +426,23 @@
 
 (defmethod init 'ambiparse/-dispatch
   [[_ pat _ _] ctx k]
-  (do-cat (empty-in ctx) ctx k (list pat :dispatch)))
+  (add-edge pat ctx k {:prefix (empty-in ctx)
+                       :continue :dispatch}))
 
 (defmethod passed 'ambiparse/-dispatch
   [[_ pat _ f], ^Context ctx, k, t]
-  (when-let [cont (if (::a/continue t)
-                    (try-at k
-                      (binding [env (.env ctx)]
-                        [(-> t ::a/elements first f)]))
-                    [])]
-    (do-cat (dissoc t ::a/continue) ctx k cont)))
+  (if (::a/continue t)
+    (let [t (dissoc t ::a/continue)
+          i (-> t ::a/end :idx)
+          env (::a/env t)]
+      (when-let [pat (try-at k
+                       (binding [env (.env ctx)]
+                         (-> t ::a/elements first f)))]
+        (add-edge pat (Context. i env) k {:prefix t})))
+    (let [t (-> t
+                (update ::a/value last)
+                (assoc ::a/structure (.pat k)))]
+      (pass k t))))
 
 (defmethod -failure 'ambiparse/-dispatch
   [[_ pat body _] ctx k]

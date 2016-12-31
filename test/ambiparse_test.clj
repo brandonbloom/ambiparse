@@ -106,11 +106,11 @@
     (a/filter #(= (::a/value %) \x) \x) "x" #{\x}
 
     (a/dispatch (a/alt \a \b)
-         (case (::a/value %)
-           \a \x
-           \b \y))
+       (case (::a/value %)
+         \a \x
+         \b \y))
     "ax"
-    #{[\a \x]}
+    #{\x}
 
     ))
 
