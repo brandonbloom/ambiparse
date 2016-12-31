@@ -306,6 +306,8 @@
   (change! graph update-in (conj (node-path k) :exception) #(or % ex))
   nil)
 
+(def ^:dynamic env)
+
 (defmacro try-at [k & body]
   `(let [k# ~k]
      (try
@@ -362,7 +364,7 @@
 (defmethod init 'ambiparse/-pred [[_ _ f], ^Context ctx, k]
   (let [i (.i ctx)
         x (input-at i)]
-    (when (try-at k (f x))
+    (when (try-at k (binding [env (.env ctx)] (f x)))
       (pass k {::a/begin (pos-at i)
                ::a/end (pos-at (inc i))
                ::a/value x
@@ -428,7 +430,9 @@
 (defmethod passed 'ambiparse/-dispatch
   [[_ pat _ f], ^Context ctx, k, t]
   (when-let [cont (if (::a/continue t)
-                    [(-> t ::a/elements first f)]
+                    (try-at k
+                      (binding [env (.env ctx)]
+                        [(-> t ::a/elements first f)]))
                     [])]
     (do-cat (dissoc t ::a/continue) ctx k cont)))
 
@@ -527,8 +531,6 @@
 
 ;;; Transformation.
 
-(def ^:dynamic env)
-
 (defmethod init 'ambiparse/-rule
   [[_ pat _ f] ctx k]
   (add-edge pat ctx k nil))
@@ -592,17 +594,18 @@
   (add-edge pat ctx k nil))
 
 (defmethod passed 'ambiparse/-prefer
-  [[_ _ pat cmp] ctx k t]
+  [[_ _ pat cmp], ^Context ctx, k, t]
   (let [buffer (:buffer (get-node k))
         buffer* (try-at k
-                  (cond
-                    ;; First parse.
-                    (empty? buffer) #{t}
-                    ;; Strictly preferrable.
-                    (every? #(neg? (cmp % t)) buffer) #{t}
-                    ;; Not strictly less preferrable.
-                    ;;TODO: Compare in one pass over buffer.
-                    (some #(zero? (cmp % t)) buffer) (conjs buffer t)))]
+                  (binding [env (.env ctx)]
+                    (cond
+                      ;; First parse.
+                      (empty? buffer) #{t}
+                      ;; Strictly preferrable.
+                      (every? #(neg? (cmp % t)) buffer) #{t}
+                      ;; Not strictly less preferrable.
+                      ;;TODO: Compare in one pass over buffer.
+                      (some #(zero? (cmp % t)) buffer) (conjs buffer t))))]
     (when buffer*
       (change! graph assoc-in (conj (node-path k) :buffer) buffer*)
       (change! buffered conj k))))
@@ -620,8 +623,8 @@
   (add-edge pat ctx k nil))
 
 (defmethod passed 'ambiparse/-filter
-  [[_ _ _ f] ctx k t]
-  (when (try-at k (f t))
+  [[_ _ _ f], ^Context ctx, k, t]
+  (when (try-at k (binding [env (.env ctx)] (f t)))
     (pass-child k t)))
 
 (defmethod -failure 'ambiparse/-filter
