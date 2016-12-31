@@ -570,7 +570,11 @@
   (add-edge pat ctx k nil))
 
 (defn strip-labels [t]
-  (->> t (filter (fn [[k v]] (= (namespace k) "ambiparse"))) (into {})))
+  (->> t
+       (filter (fn [[k v]]
+                 (and (keyword? k)
+                      (= (namespace k) "ambiparse"))))
+       (into {})))
 
 (defmethod passed 'ambiparse/label
   [[_ name pat] ctx k t]

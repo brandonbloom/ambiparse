@@ -23,3 +23,7 @@ Perf Ideas
   - dispatch node
     - based on what's parsed, gen rule.
     - like alt with the opposite of a head-fail
+
+
+Concern: Dispatch dynamically creates patterns.
+  What if a pattern created has a closure?
