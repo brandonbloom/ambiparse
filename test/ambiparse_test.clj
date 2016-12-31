@@ -131,6 +131,7 @@
   (are [pat s i errs]
        (let [ret (a/parse pat s)
              [t {:keys [pos errors]}] (clean-failure ret)]
+         (prn errors)
          (= [t (:idx pos) errors] [nil i errs]))
 
     ;; Unexpected terminal.
@@ -254,6 +255,24 @@
          :expression '(comp not (constantly true))
          :candidates #{\x}}}
 
-    ;;XXX dispatch failures.
+    ;; Dispatch initial pattern failed.
+    (a/dispatch \a \b) "xy"
+    0 #{{:expected \a}}
+
+    ;; Dispatched pattern failed.
+    (a/dispatch \a \b) "ay"
+    1 #{{:expected \b}}
+
+    ;; Dispatched body throws.
+    (a/dispatch \a (throw (Exception. "oh noez!"))) "a"
+    1 #{{:exception "oh noez!"}}
+
+    ;; Dispatched body throws later...
+    ;;TODO: Eliminate need to eval body again during gll/-failure.
+    (let [a (atom 2)]
+      (a/dispatch \a
+        (when (zero? (swap! a dec))
+          (throw (Exception. "oh noez!"))))) "a"
+    1 #{{:exception "oh noez!"}}
 
     ))

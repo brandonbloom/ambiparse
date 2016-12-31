@@ -445,10 +445,18 @@
       (pass k t))))
 
 (defmethod -failure 'ambiparse/-dispatch
-  [[_ pat body _] ctx k]
+  [[_ pat _ f], ^Context ctx, k]
   (or (failure (Key. pat ctx))
-      ;XXX for each received, check continuation.
-      ))
+      (if-let [t (rightmost-received k)]
+        (let [i (-> t ::a/end :idx)
+              x (try
+                  (binding [env (.env ctx)]
+                    (-> t ::a/elements first f))
+                  (catch Exception ex
+                    ex))]
+          (if (instance? Exception x)
+            (errors-at i {:exception x})
+            (failure (Key. x (Context. i (.env ctx)))))))))
 
 
 ;;; Alternation.
