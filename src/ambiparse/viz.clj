@@ -30,7 +30,7 @@
 
 (defn edge-label [x]
   (if x
-    (str (-> x :prefix ::a/begin :idx) " - " (-> x :prefix ::a/end :idx) "\n"
+    (str (-> x :prefix ::a/begin :index) " - " (-> x :prefix ::a/end :index) "\n"
          "pre: " (-> x :prefix ::a/value pps)
          (when (-> x :prefix ::a/env seq)
            (str "env: " (-> x :prefix ::a/env pps)))

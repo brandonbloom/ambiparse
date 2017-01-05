@@ -64,17 +64,17 @@
   (instance? Key x))
 
 (s/def ::token any?)
-(s/def ::pos (s/keys :req-un [::idx] :opt-un [::line ::col ::token]))
-(s/def ::line int?)
-(s/def ::col int?)
-(s/def ::idx int?)
+(s/def ::pos (s/keys :req-un [::index] :opt-un [::line ::column ::token]))
+(s/def ::line nat-int?)
+(s/def ::column nat-int?)
+(s/def ::index nat-int?)
 
 (s/def ::pattern some?)
 
 (s/def ::var (s/or :var var? :kw qualified-keyword?))
 (s/def ::env (s/every-kv ::var (s/every-kv any? ::pattern, :kind map?)))
 
-(s/def ::span (s/cat :begin ::idx :end ::idx))
+(s/def ::span (s/cat :begin ::index :end ::index))
 
 (s/def ::a/begin ::pos)
 (s/def ::a/end ::pos)
@@ -118,10 +118,10 @@
     (reduce-kv (fn [res, ^long n, ^long b]
                  (if (<= i b)
                    (reduced res)
-                   {:idx i :line (inc n) :col (- i b -1)}))
-               {:idx i :line 1 :col (inc i)}
+                   {:index i :line (inc n) :column (- i b -1)}))
+               {:index i :line 1 :column (inc i)}
                breaks)
-    {:idx i :token (input-at i)}))
+    {:index i :token (input-at i)}))
 
 (defn node-path [^Key k]
   (let [^Context ctx (.ctx k)
@@ -134,7 +134,7 @@
 (defn rightmost [kw xs]
   ;XXX return _all_ rightmost, otherwise nested alts mask other alts.
   (when (seq xs)
-    (apply max-key #(-> % kw :idx) xs)))
+    (apply max-key #(-> % kw :index) xs)))
 
 (defn rightmost-received [k]
   (rightmost ::a/end (-> k get-node :received)))
@@ -202,7 +202,7 @@
          ;;XXX Let individual -failure methods handle :exception so
          ;; that they can include :expr or :body in the error.
          (if-let [^Exception ex (:exception n)]
-           (errors-at (or (-> (rightmost-received k) ::a/end :idx)
+           (errors-at (or (-> (rightmost-received k) ::a/end :index)
                           (.i ctx))
                       (if (-> ex ex-data ::a/failure)
                         {:message (.getMessage ex)
@@ -398,7 +398,7 @@
 
 (defn do-cat [t, ^Context ctx, ^Key k, pats]
   (if-let [[p & ps] (seq pats)]
-    (let [i (-> t ::a/end :idx)
+    (let [i (-> t ::a/end :index)
           env (::a/env t)
           d {:prefix t :continue ps}]
       (add-edge p (Context. i env) k d))
@@ -414,7 +414,7 @@
   [[_ & pats], ^Context ctx, k]
   (let [[pat ctx] (if-let [t (rightmost-received k)]
                     (let [pats (-> t ::a/continue seq)
-                          i (-> t ::a/end :idx)
+                          i (-> t ::a/end :index)
                           env (::a/env t)]
                       [(first pats) (Context. i env)])
                     [(first pats) ctx])]
@@ -433,7 +433,7 @@
   [[_ pat _ f], ^Context ctx, k, t]
   (if (::a/continue t)
     (let [t (dissoc t ::a/continue)
-          i (-> t ::a/end :idx)
+          i (-> t ::a/end :index)
           env (::a/env t)]
       (when-let [pat (try-at k
                        (binding [env (.env ctx)]
@@ -448,7 +448,7 @@
   [[_ pat _ f], ^Context ctx, k]
   (or (failure (Key. pat ctx))
       (if-let [t (rightmost-received k)]
-        (let [i (-> t ::a/end :idx)
+        (let [i (-> t ::a/end :index)
               x (try
                   (binding [env (.env ctx)]
                     (-> t ::a/elements first f))
@@ -489,8 +489,8 @@
 ;;; Repetition.
 
 (defn non-rec [pat t]
-  (let [b (-> t ::a/begin :idx)
-        e (-> t ::a/end :idx)
+  (let [b (-> t ::a/begin :index)
+        e (-> t ::a/end :index)
         span [b e]]
     (when-not (get-in t [::a/matched pat span])
       (update-in t [::a/matched pat] conjs span))))
@@ -498,8 +498,8 @@
 (defn do-rep [[_ pat :as p] ctx k t]
   (pass k t)
   (when-let [t (non-rec pat t)]
-    (let [b (-> t ::a/begin :idx)
-          e (-> t ::a/end :idx)]
+    (let [b (-> t ::a/begin :index)
+          e (-> t ::a/end :index)]
       (when (< b e)
         (add-edge pat (Context. e (::a/env t)) k {:prefix t})))))
 
@@ -519,7 +519,7 @@
 
 (defn rep-failure [pat, ^Context ctx, k]
   (let [[e env] (if-let [t (rightmost-received k)]
-                  [(-> t ::a/end :idx) (::a/env t)]
+                  [(-> t ::a/end :index) (::a/env t)]
                   [(.i ctx) (.env ctx)])]
     (failure (Key. pat (Context. e env)))))
 
@@ -728,7 +728,7 @@
         (when (:viz opts)
           (viz/show! (state)))))
     (let [ps (->> root get-node :generated
-                  (remove #(< (-> % ::a/end :idx) (count s)))
+                  (remove #(< (-> % ::a/end :index) (count s)))
                   (map ::a/value)
                   distinct)]
       (cond

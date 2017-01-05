@@ -132,7 +132,7 @@
        (let [ret (a/parse pat s)
              [t {:keys [pos errors]}] (clean-failure ret)]
          (prn errors)
-         (= [t (:idx pos) errors] [nil i errs]))
+         (= [t (:index pos) errors] [nil i errs]))
 
     ;; Unexpected terminal.
     \x "y"

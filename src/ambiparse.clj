@@ -198,7 +198,7 @@
   (pred #(and (char? %) (Character/isLetter ^Character %))))
 
 (defn length [t]
-  (- (-> t ::end :idx) (-> t ::begin :idx)))
+  (- (-> t ::end :index) (-> t ::begin :index)))
 
 (defn longest [pat]
   (prefer (comparator-key length) pat))

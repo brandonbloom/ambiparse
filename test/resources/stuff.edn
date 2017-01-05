@@ -3,7 +3,7 @@
 
 (defn do-cat [t [_ _ tail? :as k] pats]
   (if-let [[p & ps] pats]
-    (let [i (-> t :a/end :idx)
+    (let [i (-> t :a/end :index)
           d {:prefix t :continue ps}
           tl? (and (empty? ps) tail?)]
       (add-edge i p tl? k d))
