@@ -430,7 +430,7 @@
                        :continue :dispatch}))
 
 (defmethod passed 'ambiparse/-dispatch
-  [[_ pat _ f], ^Context ctx, k, t]
+  [[_ pat _ f], ^Context ctx, ^Key k, t]
   (if (::a/continue t)
     (let [t (dissoc t ::a/continue)
           i (-> t ::a/end :index)
