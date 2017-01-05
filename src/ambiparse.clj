@@ -3,6 +3,8 @@
   (:require [ambiparse.gll :as gll]
             [ambiparse.util :refer :all]))
 
+;;XXX Avoid single-segment namespace due to JVM "unnamed package" restrictions.
+
 (alias 'a 'ambiparse)
 
 ;; Reserve the ambiparse namespace for non-label metadata.
