@@ -688,7 +688,6 @@
 (defmethod -failure 'ambiparse/unambiguous
   [[_ pat], ^Context ctx, k]
   (let [rs (-> k get-node :received)]
-    (prn 'count-rs= (count rs))
     (case (count rs)
       0 (failure (Key. pat ctx))
       1 nil
