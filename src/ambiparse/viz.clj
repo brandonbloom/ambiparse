@@ -25,7 +25,8 @@
       ambiparse/-prefer (list 'a/prefer (second pat) (-> pat (nth 2) unform))
       ambiparse/scope (list 'a/scope (second pat))
       ambiparse/-dispatch (list* 'a/dispatch (-> pat second unform)
-                                 (nth pat 2)))
+                                 (nth pat 2))
+      ambiparse/unambiguous (list 'a/unambiguous (-> pat second unform)))
     pat))
 
 (defn edge-label [x]

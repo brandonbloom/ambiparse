@@ -615,7 +615,7 @@
 
 (defmethod passed 'ambiparse/-prefer
   [[_ _ pat cmp], ^Context ctx, k, t]
-  (let [buffer (:buffer (get-node k))
+  (let [{:keys [buffer]} (get-node k)
         buffer* (try-at k
                   (binding [env (.env ctx)]
                     (cond
@@ -671,6 +671,28 @@
   [[_ pat] ctx k]
   (failure (Key. pat ctx)))
 
+
+;;; Ambiguity Control.
+
+(defmethod init 'ambiparse/unambiguous
+  [[_ pat] ctx k]
+  (add-edge pat ctx k nil))
+
+(defmethod passed 'ambiparse/unambiguous
+  [[_ pat], ^Context ctx, k, t]
+  (let [{:keys [received]} (get-node k)
+        buffer (if (pos? (count received)) #{} #{t})]
+    (change! graph assoc-in (conj (node-path k) :buffer) buffer)
+    (change! buffered conj k)))
+
+(defmethod -failure 'ambiparse/unambiguous
+  [[_ pat], ^Context ctx, k]
+  (let [rs (-> k get-node :received)]
+    (prn 'count-rs= (count rs))
+    (case (count rs)
+      0 (failure (Key. pat ctx))
+      1 nil
+      (errors-at (.i ctx) {:message "Ambiguous" :candidates rs}))))
 
 
 ;;; Execution.

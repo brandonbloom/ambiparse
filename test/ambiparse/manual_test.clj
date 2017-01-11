@@ -16,6 +16,8 @@
   (party "xy" "xz")
   (party (a/lit :x) [:x])
   (party (a/lit :x) [:y])
+  (party (a/pred pos?) [5])
+  (party (a/pred pos?) [-2])
   (party (a/cat) "")
   (party (a/cat) "x")
   (party (a/cat \x) "x")
@@ -106,6 +108,13 @@
              \a \x
              \b \y))
          "ax")
+
+  (party (a/cat \x (a/unambiguous (a/pred pos?) (a/pred even?)) \y)
+         [\x 5 \y])
+  (party (a/cat \x (a/unambiguous (a/pred pos?) (a/pred even?)) \y)
+         [\x -1 \y])
+  (party (a/cat \x (a/unambiguous (a/pred pos?) (a/pred even?)) \y)
+         [\x 4 \y])
 
   (binding [gll/breaks [0 3 7]]
     (doseq [i (range 9)]

@@ -23,6 +23,7 @@ Perf Ideas
   - dispatch node
     - based on what's parsed, gen rule.
     - like alt with the opposite of a head-fail
+  - filter earlier (consider flat/left/right don't even try to match nested)
 
 
 Concern: Dispatch dynamically creates patterns.

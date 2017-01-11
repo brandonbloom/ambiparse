@@ -112,6 +112,14 @@
     "ax"
     #{\x}
 
+    (a/cat \x (a/unambiguous (a/pred pos?) (a/pred even?)) \y)
+    [\x 5 \y]
+    #{[\x 5 \y]}
+
+    (a/cat \x (a/unambiguous (a/pred pos?) (a/pred even?)) \y)
+    [\x -1 \y]
+    #{}
+
     ))
 
 (defn clean-error
@@ -278,5 +286,13 @@
         (when (zero? (swap! a dec))
           (throw (Exception. "oh noez!"))))) "a"
     1 #{{:exception "oh noez!"}}
+
+    ;; Scoped Ambiguity.
+    (a/cat \x
+           (a/unambiguous (a/rule (a/pred pos?) :pos)
+                          (a/rule (a/pred even?) :even))
+           \y)
+    [\x 4 \y]
+    1 #{{:message "Ambiguous" :candidates #{:pos :even}}}
 
     ))

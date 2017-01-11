@@ -79,7 +79,12 @@
 (defmacro filter [f pat]
   `(-filter '~f ~pat ~f))
 
-;;XXX unambiguous node - buffer at most one parse
+(defn unambiguous
+  ([pat]
+   (with-meta (list `unambiguous pat)
+              {::a/head-fail (-> pat meta ::a/head-fail)}))
+  ([pat & pats]
+   (unambiguous (apply alt pat pats))))
 
 (defn scope
   ([pat]
